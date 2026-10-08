@@ -1,77 +1,108 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowRight, CircleAlert, CircleCheck, Eye, EyeOff, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { FigureMark } from "@/components/ui/YPCMark";
+import { Logo } from "@/components/layout/Navbar";
+import { safeNextPath } from "@/lib/utils";
 
-interface LoginForm { email: string; password: string; }
+function friendly(message: string): string {
+  const m = message.toLowerCase();
+  if (m.includes("email not confirmed")) return "Please confirm your email first — check your inbox (and spam) for the link we sent.";
+  if (m.includes("invalid login") || m.includes("invalid credentials")) return "That email and password don't match. Please try again.";
+  if (m.includes("rate limit") || m.includes("too many")) return "Too many attempts. Please wait a few minutes and try again.";
+  if (m.includes("fetch") || m.includes("network")) return "We couldn't reach the server. Check your connection and try again.";
+  return "We couldn't sign you in. Please try again.";
+}
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
-  const supabase = createClient();
+  const params = useSearchParams();
+  const notice = params.get("notice");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>();
 
-  async function onSubmit(data: LoginForm) {
-    setLoading(true); setError("");
-    const { error: err } = await supabase.auth.signInWithPassword({ email: data.email, password: data.password });
-    if (err) { setError(err.message); setLoading(false); return; }
-    router.push("/dashboard"); router.refresh();
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email.trim() || !password) return setError("Enter your email and password.");
+    setLoading(true);
+    setError("");
+    const { error: err } = await createClient().auth.signInWithPassword({ email: email.trim(), password });
+    if (err) {
+      setLoading(false);
+      return setError(friendly(err.message));
+    }
+    router.push(safeNextPath(params.get("next")));
+    router.refresh();
   }
 
-  const ArrowR = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg>;
-
   return (
-    <div style={{ minHeight: "100vh", background: "var(--paper)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "48px 20px" }}>
-      {/* Logo */}
-      <Link href="/" style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 40, fontWeight: 700, letterSpacing: "-0.02em", textDecoration: "none", color: "var(--ink)" }}>
-        <FigureMark size={36} color="#1936FF" />
-        <span style={{ fontSize: 17, lineHeight: 1.05 }}>YPC<br /><span style={{ fontWeight: 500, fontSize: 11, letterSpacing: ".08em", color: "#666" }}>LAGOS PROVINCE 9</span></span>
-      </Link>
+    <>
+      <span className="eyebrow">Welcome back</span>
+      <h1 className="title-lg" style={{ marginTop: 8 }}>Sign in.</h1>
+      <p className="lede" style={{ margin: "8px 0 24px" }}>Use the email you registered with.</p>
 
-      <div className="login-wrap" style={{ width: "100%" }}>
-        <span className="pill accent">Welcome back</span>
-        <h2 style={{ marginTop: 16 }}>Sign in.</h2>
-        <p style={{ color: "#666", marginBottom: 24, fontSize: 16 }}>Use the email you registered with.</p>
+      {notice === "confirmed" && (
+        <div className="alert alert-ok" role="status" style={{ marginBottom: 20 }}>
+          <CircleCheck size={18} aria-hidden="true" /> Your email is confirmed. Sign in to continue.
+        </div>
+      )}
+      {notice === "link-expired" && (
+        <div className="alert alert-error" role="alert" style={{ marginBottom: 20 }}>
+          <CircleAlert size={18} aria-hidden="true" /> That link has expired or was already used. Try signing in — if your email isn&apos;t confirmed yet, register again to get a new link.
+        </div>
+      )}
+      {error && (
+        <div className="alert alert-error" role="alert" style={{ marginBottom: 20 }}>
+          <CircleAlert size={18} aria-hidden="true" /> {error}
+        </div>
+      )}
 
-        {error && (
-          <div style={{ padding: "12px 16px", borderRadius: 12, background: "#FFF0EE", border: "1px solid #FFD6D0", color: "var(--coral)", fontSize: 14, marginBottom: 16 }}>
-            {error}
+      <form onSubmit={onSubmit} noValidate>
+        <div className="field">
+          <label className="label" htmlFor="email">Email</label>
+          <input id="email" className="input" type="email" inputMode="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        <div className="field">
+          <label className="label" htmlFor="password">Password</label>
+          <div className="input-wrap">
+            <input id="password" className="input" type={showPw ? "text" : "password"} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <button type="button" className="icon-btn" onClick={() => setShowPw((s) => !s)} aria-label={showPw ? "Hide password" : "Show password"} aria-pressed={showPw}>
+              {showPw ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
           </div>
-        )}
+        </div>
+        <button type="submit" className="btn btn-action btn-lg btn-block" disabled={loading} style={{ marginTop: 8 }}>
+          {loading ? <><Loader2 size={18} className="spin" aria-hidden="true" /> Signing in…</> : <>Sign in <ArrowRight size={20} aria-hidden="true" /></>}
+        </button>
+      </form>
 
-        <form onSubmit={handleSubmit(onSubmit)}>
-          <div className={`field${errors.email ? " err" : ""}`}>
-            <label>Email</label>
-            <input {...register("email", { required: "Required" })} type="email" placeholder="you@example.com" autoComplete="email" />
-            {errors.email && <div className="err-msg">{errors.email.message}</div>}
-          </div>
-          <div className={`field${errors.password ? " err" : ""}`}>
-            <label>Password</label>
-            <div style={{ position: "relative" }}>
-              <input {...register("password", { required: "Required" })} type={showPw ? "text" : "password"} placeholder="••••••••" autoComplete="current-password" style={{ paddingRight: 48 }} />
-              <button type="button" onClick={() => setShowPw(!showPw)} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", color: "#999", padding: 4 }}>
-                {showPw ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>}
-              </button>
-            </div>
-            {errors.password && <div className="err-msg">{errors.password.message}</div>}
-          </div>
-          <button type="submit" disabled={loading} className="btn btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: 8, opacity: loading ? .7 : 1 }}>
-            {loading ? "Signing in…" : <> Sign in <ArrowR /></>}
-          </button>
-        </form>
+      <p className="small ink-2" style={{ marginTop: 24, textAlign: "center" }}>
+        Not a member yet? <Link href="/register" className="btn-link" style={{ minHeight: 0 }}>Join YPC</Link>
+      </p>
+      <p className="small" style={{ marginTop: 4, textAlign: "center" }}>
+        <Link href="/forgot-password" className="btn-link">Forgotten your password?</Link>
+      </p>
+    </>
+  );
+}
 
-        <p style={{ marginTop: 20, fontSize: 14, color: "#666", textAlign: "center" }}>
-          No account?{" "}
-          <Link href="/register" style={{ color: "var(--blue)", fontWeight: 600 }}>Register free</Link>
-        </p>
-      </div>
+export default function LoginPage() {
+  return (
+    <div className="auth-shell">
+      <header className="auth-top"><div className="wrap"><Logo /></div></header>
+      <main id="main" className="auth-main">
+        <div className="wrap wrap-form">
+          <Suspense fallback={null}>
+            <LoginForm />
+          </Suspense>
+        </div>
+      </main>
     </div>
   );
 }
