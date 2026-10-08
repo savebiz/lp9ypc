@@ -1,7 +1,8 @@
 -- ============================================================================
 -- LP9 YPC — post-setup verification (read-only; changes nothing)
 -- ============================================================================
--- Run in the Supabase SQL Editor after the initial-schema migration.
+-- Run in the Supabase SQL Editor after BOTH migrations (initial schema +
+-- community_agents).
 -- Every row should show ok = true. If any row says false, stop and send the
 -- result over before going further.
 -- ============================================================================
@@ -29,8 +30,8 @@ select '04. signup trigger is installed on auth.users',
                   and tgrelid = 'auth.users'::regclass
                   and not tgisinternal)
 union all
-select '05. all 20 security policies are installed',
-       (select count(*) = 20 from pg_policies where schemaname = 'public')
+select '05. all 45 security policies are installed (20 + 25 from migration 2)',
+       (select count(*) = 45 from pg_policies where schemaname = 'public')
 union all
 select '06. members CANNOT change their own role (blocks self-promotion to admin)',
        not has_column_privilege('authenticated', 'public.profiles', 'role', 'UPDATE')
@@ -68,4 +69,40 @@ select '14. every job must have an http(s) Apply link',
 union all
 select '15. no member is an admin yet (expected until you promote yourself)',
        (select count(*) = 0 from public.profiles where role = 'admin')
+union all
+select '16. all 11 Phase 2 tables exist with row-level security ON',
+       (select count(*) = 11 and bool_and(c.relrowsecurity) from pg_class c
+         where c.relnamespace = 'public'::regnamespace and c.relkind = 'r'
+           and c.relname in ('profession_research','career_path_suggestions','career_path_candidates','job_sources',
+                             'communities','community_members','threads','replies','reports','moderation_log','agent_runs'))
+union all
+select '17. 17 communities seeded (10 career + 7 interest)',
+       (select count(*) = 17 from public.communities)
+union all
+select '18. members CANNOT write discussion posts directly (server-side only)',
+       not has_table_privilege('authenticated', 'public.threads', 'INSERT')
+       and not has_table_privilege('authenticated', 'public.replies', 'INSERT')
+       and not has_table_privilege('authenticated', 'public.threads', 'UPDATE')
+union all
+select '19. visitors CANNOT read discussions, members, or agent logs',
+       not has_table_privilege('anon', 'public.threads', 'SELECT')
+       and not has_table_privilege('anon', 'public.community_members', 'SELECT')
+       and not has_table_privilege('anon', 'public.agent_runs', 'SELECT')
+union all
+select '20. member names are exposed only via member_directory, to members only',
+       has_table_privilege('authenticated', 'public.member_directory', 'SELECT')
+       and not has_table_privilege('anon', 'public.member_directory', 'SELECT')
+union all
+select '21. members can change ONLY the status of their career suggestions',
+       has_column_privilege('authenticated', 'public.career_path_suggestions', 'status', 'UPDATE')
+       and not has_column_privilege('authenticated', 'public.career_path_suggestions', 'career_path_id', 'UPDATE')
+union all
+select '22. members can set their career goal',
+       has_column_privilege('authenticated', 'public.profiles', 'career_goal', 'UPDATE')
+union all
+select '23. jobs have a review queue for scraped listings (review_status column)',
+       exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'jobs' and column_name = 'review_status')
+union all
+select '24. report community is set server-side (trigger installed)',
+       exists (select 1 from pg_trigger where tgname = 'reports_set_community' and not tgisinternal)
 order by 1;

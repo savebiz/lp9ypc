@@ -7,6 +7,7 @@ export interface CareerPath {
 }
 
 // Mirrors supabase/migrations/20261008120000_initial_schema.sql
+// and 20261009120000_community_agents.sql
 export interface Profile {
   id: string;
   full_name: string;
@@ -17,6 +18,7 @@ export interface Profile {
   profession: string | null;
   employment_status: EmploymentStatus | null;
   preferred_work_mode: "remote" | "onsite" | "hybrid" | "any" | null;
+  career_goal: CareerGoal | null;
   consent_updates: boolean;
   role: "member" | "admin";
   avatar_url: string | null;
@@ -43,6 +45,11 @@ export interface Job {
   created_at: string;
   updated_at: string;
   career_paths?: CareerPath;
+  // Phase 2: scraper review queue
+  source_id?: string | null;
+  source_page_url?: string | null;
+  dedupe_key?: string | null;
+  review_status?: ReviewStatus;
 }
 
 export interface SavedJob {
@@ -60,6 +67,14 @@ export interface Announcement {
   is_active: boolean;
   posted_by: string | null;
   created_at: string;
+  // Phase 2: News & events portal (database defaults: scope 'province', kind 'announcement')
+  scope: AnnouncementScope;
+  scope_label: string | null;
+  kind: "announcement" | "event";
+  starts_at: string | null;
+  ends_at: string | null;
+  location: string | null;
+  link_url: string | null;
 }
 
 export interface MemberCareerPath {
@@ -74,3 +89,173 @@ export type EmploymentStatus = "employed" | "self-employed" | "unemployed" | "st
 export type WorkMode = "remote" | "onsite" | "hybrid";
 export type EngagementType = "full-time" | "part-time" | "contract" | "internship" | "graduate-trainee";
 export type ExperienceLevel = "entry" | "mid" | "senior";
+
+// ── Phase 2 ──────────────────────────────────────────────────────────────
+
+export type CareerGoal = "grow" | "switch" | "explore";
+export type ReviewStatus = "pending" | "approved" | "rejected";
+export type AnnouncementScope = "parish" | "province" | "region" | "national";
+export type PostStatus = "pending" | "visible" | "held" | "removed";
+
+export interface JobSource {
+  id: string;
+  name: string;
+  url: string;
+  is_active: boolean;
+  notes: string | null;
+  last_run_at: string | null;
+  last_status: "ok" | "error" | "blocked" | "empty" | null;
+  last_error: string | null;
+  jobs_found: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CareerPathSuggestion {
+  id: string;
+  member_id: string;
+  career_path_id: string;
+  kind: "match" | "switch";
+  reason: string | null;
+  sources: { title: string; url: string }[];
+  status: "new" | "added" | "dismissed";
+  created_at: string;
+  updated_at: string;
+  career_paths?: CareerPath;
+}
+
+export interface ProfessionResearch {
+  id: string;
+  profession_key: string;
+  profession_label: string;
+  summary: string | null;
+  matches: { slug: string; reason: string }[];
+  switch_options: { slug: string; reason: string }[];
+  sources: { title: string; url: string }[];
+  status: "pending" | "done" | "error";
+  error: string | null;
+  researched_at: string | null;
+  created_at: string;
+}
+
+export interface CareerPathCandidate {
+  id: string;
+  name: string;
+  rationale: string | null;
+  evidence: { title: string; url: string }[];
+  status: "pending" | "approved" | "rejected";
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+export interface Community {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  kind: "career" | "interest";
+  career_path_id: string | null;
+  /** Career communities: the career-path slug (render with <PathIcon>). Interest: a lucide icon key. */
+  icon: string;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CommunityOverview {
+  community_id: string;
+  member_count: number;
+  thread_count: number;
+  last_activity_at: string | null;
+}
+
+export interface CommunityMember {
+  community_id: string;
+  member_id: string;
+  role: "member" | "manager";
+  joined_at: string;
+}
+
+/** Public-safe author name: first name + last initial. Members only. */
+export interface MemberDirectoryEntry {
+  id: string;
+  display_name: string;
+}
+
+interface PostModeration {
+  status: PostStatus;
+  needs_review: boolean;
+  moderation_reason: string | null;
+  moderation_categories: string[];
+  moderated_by: "agent" | "human" | null;
+}
+
+export interface Thread extends PostModeration {
+  id: string;
+  community_id: string;
+  author_id: string;
+  title: string;
+  body: string;
+  is_pinned: boolean;
+  is_locked: boolean;
+  reply_count: number;
+  last_activity_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Reply extends PostModeration {
+  id: string;
+  thread_id: string;
+  community_id: string;
+  author_id: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Report {
+  id: string;
+  community_id: string;
+  target_type: "thread" | "reply";
+  target_id: string;
+  reporter_id: string;
+  reason: string;
+  status: "open" | "resolved" | "dismissed";
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+}
+
+export type ModerationAction =
+  | "allow" | "hold" | "remove" | "restore" | "pin" | "unpin" | "lock" | "unlock"
+  | "delete_own" | "report_resolve" | "report_dismiss" | "flag";
+
+export interface ModerationLogEntry {
+  id: string;
+  community_id: string | null;
+  target_type: "thread" | "reply" | null;
+  target_id: string | null;
+  actor_type: "agent" | "human" | "system";
+  actor_id: string | null;
+  action: ModerationAction;
+  reason: string | null;
+  created_at: string;
+}
+
+export interface AgentRun {
+  id: string;
+  agent: "job_scraper" | "career_research" | "moderation_sweep";
+  status: "running" | "ok" | "error" | "skipped";
+  started_at: string;
+  finished_at: string | null;
+  items_processed: number;
+  input_tokens: number;
+  output_tokens: number;
+  web_searches: number;
+  error: string | null;
+  details: Record<string, unknown>;
+}
