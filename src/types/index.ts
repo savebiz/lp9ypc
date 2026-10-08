@@ -6,16 +6,17 @@ export interface CareerPath {
   created_at: string;
 }
 
+// Mirrors supabase/migrations/20261008120000_initial_schema.sql
 export interface Profile {
   id: string;
   full_name: string;
-  phone: string;
+  phone: string | null;
   email: string;
   area_of_residence: string | null;
   parish_unit: string | null;
   profession: string | null;
-  employment_status: string | null;
-  preferred_work_mode: string | null;
+  employment_status: EmploymentStatus | null;
+  preferred_work_mode: "remote" | "onsite" | "hybrid" | "any" | null;
   consent_updates: boolean;
   role: "member" | "admin";
   avatar_url: string | null;
@@ -57,6 +58,7 @@ export interface Announcement {
   title: string;
   content: string | null;
   is_active: boolean;
+  posted_by: string | null;
   created_at: string;
 }
 
