@@ -41,19 +41,17 @@ New query → paste `verify.sql` → **Run**. All 15 rows should say `true`.
 ### 4. Auth settings
 **Authentication → URL Configuration**
 - **Site URL:** `https://lp-9-ypc-community-platform.vercel.app`
-- **Redirect URLs:** add `http://localhost:3000/**`
+- **Redirect URLs:** add `https://lp-9-ypc-community-platform.vercel.app/**`
+  and `http://localhost:3000/**` (confirmation and password-reset links
+  return to `/auth/callback`).
 
-**Authentication → Sign In / Providers → Email** — one decision needed:
-**"Confirm email"** (on by default).
-- **On (recommended — security first):** only real, reachable emails get
-  accounts. But today's register page assumes it gets a session straight
-  away, so with this on, a new member sees "You're a YPC member", gets sent
-  to the login page, and their career-path picks don't save until they log
-  in. The schema already supports the fix (the form passes the picks in
-  signup metadata and the signup trigger saves them); the form change
-  belongs in the registration ticket.
-- **Off:** the current form works end to end today, but anyone can sign up
-  with an email they don't own.
+**Authentication → Sign In / Providers → Email**
+- **Confirm email: ON** (the default — leave it). The register page now
+  handles it: new members see "Check your email", the link lands on
+  `/auth/callback`, and they arrive signed in on their dashboard. Their
+  career-path picks are saved by the signup trigger, so nothing is lost
+  while they confirm.
+- **Minimum password length: 8** (the form already requires 8).
 
 ### 5. Connect the app
 **Project Settings → API Keys.** You need two values:
@@ -103,13 +101,11 @@ access, run the same statement with `'member'`.
   (Authentication → Users), which removes their profile, saved jobs and
   career paths with it. That's a human decision, per CLAUDE.md.
 
-## Known gaps (code side — for the registration ticket, not this one)
+## Registration and the database (resolved on branch `phase-1-mvp`)
 
-- The register page **hard-codes `consent_updates: true`**. The database
-  stores whatever it's sent, so consent is still recorded as given without
-  being asked. Fixed by adding a real consent checkbox.
-- Employment status and preferred work mode aren't on the signup form yet.
-  The trigger already accepts both.
+The register page now asks for consent with an unticked checkbox and
+collects employment status and preferred work mode. All of it is passed as
+signup metadata, which the trigger validates and saves.
 
 ## Free-tier pausing
 
