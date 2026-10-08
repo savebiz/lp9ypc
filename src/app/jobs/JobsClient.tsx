@@ -1,131 +1,227 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Search, SlidersHorizontal, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import JobCard from "@/components/jobs/JobCard";
-import type { Job, CareerPath } from "@/types";
+import { PathIcon } from "@/components/ui/icons";
+import { ENGAGEMENT_LABELS, LEVEL_LABELS, WORK_MODE_LABELS, shortPathName } from "@/lib/utils";
+import type { CareerPath, Job } from "@/types";
 
 interface Props {
   initialJobs: Job[];
   careerPaths: CareerPath[];
   userId: string | null;
   initialSavedIds: string[];
+  initialPath: string | null;
 }
 
-const PATH_ICONS: Record<string, React.ReactNode> = {
-  "business-entrepreneurship": <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3h18v4H3z"/><path d="M3 10h18v11H3z"/><path d="M10 14h4"/></svg>,
-  "creative-industries":       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><path d="M2 12s4-8 10-8 10 8 10 8-4 8-10 8S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>,
-  "engineering-pm":            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z"/></svg>,
-  "finance-accounting":        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>,
-  "health-wellness":           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>,
-  "human-resources":           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
-  "law-compliance":            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>,
-  "media-communications":      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>,
-  "public-sector":             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 22V9l9-7 9 7v13"/><path d="M9 22V12h6v10"/></svg>,
-  "tech-product":              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>,
-};
+const ALL = "all";
 
-export default function JobsClient({ initialJobs, careerPaths, userId, initialSavedIds }: Props) {
-  const supabase = createClient();
+export default function JobsClient({ initialJobs, careerPaths, userId, initialSavedIds, initialPath }: Props) {
+  const router = useRouter();
+  const validInitialPath = careerPaths.some((c) => c.slug === initialPath) ? [initialPath as string] : [];
+
   const [q, setQ] = useState("");
-  const [activePaths, setActivePaths] = useState<string[]>([]);
-  const [type, setType] = useState("all");
-  const [level, setLevel] = useState("all");
+  const [paths, setPaths] = useState<string[]>(validInitialPath);
+  const [workMode, setWorkMode] = useState(ALL);
+  const [type, setType] = useState(ALL);
+  const [level, setLevel] = useState(ALL);
+  const [location, setLocation] = useState(ALL);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set(initialSavedIds));
   const [toast, setToast] = useState("");
 
-  const filtered = useMemo(() => initialJobs.filter((j) => {
-    if (activePaths.length && j.career_paths && !activePaths.includes(j.career_paths.slug)) return false;
-    if (type !== "all" && j.engagement_type !== type) return false;
-    if (level !== "all" && j.experience_level !== level) return false;
-    if (q) {
-      const s = q.toLowerCase();
-      if (!j.title.toLowerCase().includes(s) && !j.company.toLowerCase().includes(s) && !(j.description?.toLowerCase().includes(s))) return false;
-    }
-    return true;
-  }), [initialJobs, q, activePaths, type, level]);
+  const locations = useMemo(
+    () => [...new Set(initialJobs.map((j) => j.location?.trim()).filter((l): l is string => !!l))].sort(),
+    [initialJobs],
+  );
+
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    return initialJobs.filter((j) => {
+      if (paths.length && !(j.career_paths && paths.includes(j.career_paths.slug))) return false;
+      if (workMode !== ALL && j.work_mode !== workMode) return false;
+      if (type !== ALL && j.engagement_type !== type) return false;
+      if (level !== ALL && j.experience_level !== level) return false;
+      if (location !== ALL && j.location?.trim() !== location) return false;
+      if (s) {
+        const hay = [j.title, j.company, j.location, j.description].filter(Boolean).join(" ").toLowerCase();
+        if (!hay.includes(s)) return false;
+      }
+      return true;
+    });
+  }, [initialJobs, q, paths, workMode, type, level, location]);
+
+  const panelFilters = [
+    workMode !== ALL && { key: "mode", label: WORK_MODE_LABELS[workMode], clear: () => setWorkMode(ALL) },
+    type !== ALL && { key: "type", label: ENGAGEMENT_LABELS[type], clear: () => setType(ALL) },
+    level !== ALL && { key: "level", label: LEVEL_LABELS[level], clear: () => setLevel(ALL) },
+    location !== ALL && { key: "loc", label: location, clear: () => setLocation(ALL) },
+  ].filter(Boolean) as { key: string; label: string; clear: () => void }[];
+
+  const anyFilter = panelFilters.length > 0 || paths.length > 0 || q.trim() !== "";
+
+  function clearAll() {
+    setQ(""); setPaths([]); setWorkMode(ALL); setType(ALL); setLevel(ALL); setLocation(ALL);
+  }
 
   function togglePath(slug: string) {
-    setActivePaths((p) => p.includes(slug) ? p.filter((x) => x !== slug) : [...p, slug]);
+    setPaths((p) => (p.includes(slug) ? p.filter((x) => x !== slug) : [...p, slug]));
   }
 
-  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(""), 2200); }
+  function showToast(msg: string) {
+    setToast(msg);
+    setTimeout(() => setToast(""), 2400);
+  }
 
   async function toggleSave(jobId: string) {
-    if (!userId) { window.location.href = "/login"; return; }
+    if (!userId) {
+      router.push("/login?next=/jobs");
+      return;
+    }
+    const supabase = createClient();
     if (savedIds.has(jobId)) {
-      await supabase.from("saved_jobs").delete().eq("member_id", userId).eq("job_id", jobId);
+      const { error } = await supabase.from("saved_jobs").delete().eq("member_id", userId).eq("job_id", jobId);
+      if (error) return showToast("Couldn't remove it — please try again");
       setSavedIds((s) => { const n = new Set(s); n.delete(jobId); return n; });
-      showToast("Removed from saved");
+      showToast("Removed from saved jobs");
     } else {
-      await supabase.from("saved_jobs").insert({ member_id: userId, job_id: jobId });
+      const { error } = await supabase.from("saved_jobs").insert({ member_id: userId, job_id: jobId });
+      if (error) return showToast("Couldn't save it — please try again");
       setSavedIds((s) => new Set([...s, jobId]));
-      showToast("Saved to your profile");
+      showToast("Saved to your dashboard");
     }
   }
-
-  const SelectStyle = { padding: "10px 14px", border: "1px solid var(--line)", borderRadius: 99, background: "var(--paper)", fontSize: 14, fontWeight: 500, color: "var(--ink)", cursor: "pointer" };
 
   return (
     <>
-      {/* Filter row */}
-      <div className="filter-row">
+      <div className="toolbar">
         <div className="search">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="1.8" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-          <input placeholder="Search by title, company, skill…" value={q} onChange={(e) => setQ(e.target.value)} />
-          {q && <button onClick={() => setQ("")} style={{ color: "#999", padding: 0, lineHeight: 1 }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-          </button>}
+          <Search size={20} aria-hidden="true" />
+          <label htmlFor="job-search" className="sr-only">Search jobs</label>
+          <input
+            id="job-search"
+            className="input"
+            type="search"
+            placeholder="Search title, organisation or location"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            autoComplete="off"
+          />
+          {q && (
+            <button type="button" className="icon-btn" onClick={() => setQ("")} aria-label="Clear search">
+              <X size={18} />
+            </button>
+          )}
         </div>
-        <select value={type} onChange={(e) => setType(e.target.value)} style={SelectStyle}>
-          <option value="all">All types</option>
-          <option value="full-time">Full-time</option>
-          <option value="part-time">Part-time</option>
-          <option value="contract">Contract</option>
-          <option value="internship">Internship</option>
-          <option value="graduate-trainee">Graduate Trainee</option>
-        </select>
-        <select value={level} onChange={(e) => setLevel(e.target.value)} style={SelectStyle}>
-          <option value="all">All levels</option>
-          <option value="entry">Entry</option>
-          <option value="mid">Mid</option>
-          <option value="senior">Senior</option>
-        </select>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => setFiltersOpen((o) => !o)}
+          aria-expanded={filtersOpen}
+          aria-controls="filter-panel"
+        >
+          <SlidersHorizontal size={18} aria-hidden="true" />
+          Filters{panelFilters.length ? ` (${panelFilters.length})` : ""}
+        </button>
       </div>
 
-      {/* Career path chips */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "20px 0 12px" }}>
-        <button className={`chip${activePaths.length === 0 ? " on" : ""}`} onClick={() => setActivePaths([])}>All paths</button>
+      {filtersOpen && (
+        <div id="filter-panel" className="filter-panel">
+          <div className="field">
+            <label className="label" htmlFor="f-mode">Work mode</label>
+            <select id="f-mode" className="input" value={workMode} onChange={(e) => setWorkMode(e.target.value)}>
+              <option value={ALL}>Any</option>
+              <option value="remote">Remote</option>
+              <option value="onsite">On-site (physical)</option>
+              <option value="hybrid">Hybrid</option>
+            </select>
+          </div>
+          <div className="field">
+            <label className="label" htmlFor="f-type">Job type</label>
+            <select id="f-type" className="input" value={type} onChange={(e) => setType(e.target.value)}>
+              <option value={ALL}>Any</option>
+              {Object.entries(ENGAGEMENT_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label className="label" htmlFor="f-level">Experience</label>
+            <select id="f-level" className="input" value={level} onChange={(e) => setLevel(e.target.value)}>
+              <option value={ALL}>Any</option>
+              {Object.entries(LEVEL_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label className="label" htmlFor="f-loc">Location</label>
+            <select id="f-loc" className="input" value={location} onChange={(e) => setLocation(e.target.value)}>
+              <option value={ALL}>Anywhere</option>
+              {locations.map((l) => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </div>
+          <div className="panel-actions">
+            <button type="button" className="btn-link" onClick={() => { setWorkMode(ALL); setType(ALL); setLevel(ALL); setLocation(ALL); }}>
+              Reset filters
+            </button>
+            <button type="button" className="btn btn-solid btn-sm" onClick={() => setFiltersOpen(false)}>
+              Show {filtered.length} {filtered.length === 1 ? "job" : "jobs"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="path-filter" role="group" aria-label="Filter by career path">
+        <button type="button" className="chip-btn" aria-pressed={paths.length === 0} onClick={() => setPaths([])}>
+          All paths
+        </button>
         {careerPaths.map((cp) => (
-          <button key={cp.id} className={`chip${activePaths.includes(cp.slug) ? " on" : ""}`} onClick={() => togglePath(cp.slug)}>
-            {PATH_ICONS[cp.slug]}
-            {cp.name.split(" & ")[0]}
+          <button
+            key={cp.id}
+            type="button"
+            className="chip-btn"
+            aria-pressed={paths.includes(cp.slug)}
+            onClick={() => togglePath(cp.slug)}
+          >
+            <PathIcon slug={cp.slug} size={16} />
+            {shortPathName(cp.name)}
           </button>
         ))}
       </div>
 
-      {/* Result count */}
-      <p style={{ fontSize: 14, color: "#888", marginBottom: 0 }}>
-        <strong style={{ color: "var(--blue)", fontFamily: "var(--font-display)", fontSize: 18 }}>{filtered.length}</strong> roles open
-        {(q || activePaths.length || type !== "all" || level !== "all") && " (filtered)"}
-      </p>
-
-      {/* Grid */}
-      {filtered.length === 0 ? (
-        <div className="empty" style={{ marginTop: 24 }}>
-          {initialJobs.length === 0
-            ? "No jobs posted yet — check back soon."
-            : "No jobs match those filters. Try clearing one."}
-        </div>
-      ) : (
-        <div className="jobs-grid">
-          {filtered.map((j) => (
-            <JobCard key={j.id} job={j} isSaved={savedIds.has(j.id)} onToggleSave={userId ? toggleSave : undefined} />
+      {panelFilters.length > 0 && (
+        <div className="row-wrap" style={{ marginBottom: 8 }}>
+          {panelFilters.map((f) => (
+            <button key={f.key} type="button" className="chip-btn on chip-remove" onClick={f.clear} aria-label={`Remove filter: ${f.label}`}>
+              {f.label} <X size={16} aria-hidden="true" />
+            </button>
           ))}
         </div>
       )}
 
-      {toast && <div className="toast">{toast}</div>}
+      <p className="result-count" aria-live="polite">
+        <strong>{filtered.length}</strong> {filtered.length === 1 ? "role" : "roles"}
+        {anyFilter ? " match your filters" : " open"}
+        {anyFilter && (
+          <> · <button type="button" className="btn-link" style={{ minHeight: 0 }} onClick={clearAll}>Clear all</button></>
+        )}
+      </p>
+
+      {filtered.length === 0 ? (
+        <div className="empty">
+          {initialJobs.length === 0
+            ? "No jobs posted yet. New opportunities are added by YPC coordinators — check back soon."
+            : "No jobs match those filters. Try removing one."}
+        </div>
+      ) : (
+        <div className="jobs-list">
+          {filtered.map((j) => (
+            <JobCard key={j.id} job={j} isSaved={savedIds.has(j.id)} onToggleSave={toggleSave} />
+          ))}
+        </div>
+      )}
+
+      {toast && <div className="toast" role="status">{toast}</div>}
     </>
   );
 }

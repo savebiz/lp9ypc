@@ -1,106 +1,106 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { ArrowLeft } from "lucide-react";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
-import { formatDate, isExpired } from "@/lib/utils";
+import ApplyButton from "@/components/jobs/ApplyButton";
+import { PathIcon } from "@/components/ui/icons";
+import { getSession } from "@/lib/session";
+import {
+  ENGAGEMENT_LABELS,
+  LEVEL_LABELS,
+  WORK_MODE_LABELS,
+  closesLabel,
+  formatDate,
+  isDeadlineSoon,
+  isExpired,
+} from "@/lib/utils";
 import type { Job } from "@/types";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  if (!UUID.test(id)) notFound();
 
-  let isAdmin = false;
-  let userName = "";
-  if (user) {
-    const { data: p } = await supabase.from("profiles").select("role,full_name").eq("id", user.id).single();
-    isAdmin = p?.role === "admin";
-    userName = p?.full_name ?? "";
-  }
-
-  const { data: job } = await supabase.from("jobs").select("*, career_paths(*)").eq("id", id).single() as { data: Job | null };
+  const { supabase, user, userName, isAdmin } = await getSession();
+  const { data } = await supabase.from("jobs").select("*, career_paths(*)").eq("id", id).maybeSingle();
+  const job = data as Job | null;
   if (!job) notFound();
 
   const expired = isExpired(job.deadline);
+  const facts: [string, React.ReactNode][] = [
+    ["Organisation", job.company],
+    ["Location", job.location ?? (job.work_mode === "remote" ? "Anywhere (remote)" : "Not stated")],
+    ["Work mode", job.work_mode ? WORK_MODE_LABELS[job.work_mode] : "Not stated"],
+    ["Job type", job.engagement_type ? ENGAGEMENT_LABELS[job.engagement_type] : "Not stated"],
+    ["Experience", job.experience_level ? LEVEL_LABELS[job.experience_level] : "Not stated"],
+    ["Salary", job.salary_range ?? "Not listed"],
+    [
+      "Deadline",
+      <span key="d" style={isDeadlineSoon(job.deadline) ? { color: "var(--coral-ink)", fontWeight: 600 } : undefined}>
+        {job.deadline ? `${formatDate(job.deadline)} · ${closesLabel(job.deadline)}` : "Open until filled"}
+      </span>,
+    ],
+    [
+      "Career path",
+      job.career_paths ? (
+        <Link key="p" href={`/jobs?path=${job.career_paths.slug}`} className="row" style={{ gap: 6, color: "var(--blue)" }}>
+          <PathIcon slug={job.career_paths.slug} size={16} /> {job.career_paths.name}
+        </Link>
+      ) : "General",
+    ],
+    ["Posted", formatDate(job.created_at)],
+  ];
 
   return (
-    <div>
+    <>
       <Navbar user={user} isAdmin={isAdmin} userName={userName} />
-
-      <div className="wrap" style={{ paddingTop: 40, paddingBottom: 80, maxWidth: 800 }}>
-        <Link href="/jobs" style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14, color: "#888", marginBottom: 32 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="m11 5-7 7 7 7"/></svg>
-          Back to Jobs
+      <main id="main" className="wrap wrap-narrow detail">
+        <Link href="/jobs" className="btn-link" style={{ color: "var(--ink-2)", textDecoration: "none" }}>
+          <ArrowLeft size={18} aria-hidden="true" /> All jobs
         </Link>
 
-        <div className="card" style={{ padding: 40 }}>
-          {/* Header */}
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 32 }}>
-            <div>
-              <h1 style={{ fontFamily: "var(--font-display)", fontSize: 40, letterSpacing: "-0.02em", margin: "0 0 8px", lineHeight: 1.1 }}>{job.title}</h1>
-              <p style={{ fontSize: 20, color: "var(--blue)", fontWeight: 600, margin: 0 }}>{job.company}</p>
-            </div>
-            {job.career_paths && (
-              <div style={{ textAlign: "center", flexShrink: 0 }}>
-                <div style={{ fontSize: 40 }}>{job.career_paths.icon}</div>
-                <p style={{ fontSize: 12, color: "#888", marginTop: 4, maxWidth: 80, lineHeight: 1.3 }}>{job.career_paths.name}</p>
-              </div>
-            )}
-          </div>
-
-          {/* Meta chips */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 32 }}>
-            {job.location && <span className="chip">{job.location}</span>}
-            {job.work_mode && <span className="chip">{job.work_mode.charAt(0).toUpperCase() + job.work_mode.slice(1)}</span>}
-            {job.engagement_type && <span className="chip">{job.engagement_type.replace("-", " ").replace(/\b\w/g, c => c.toUpperCase())}</span>}
-            {job.experience_level && <span className="chip">{job.experience_level.charAt(0).toUpperCase() + job.experience_level.slice(1)} Level</span>}
-            {job.salary_range && (
-              <span className="chip" style={{ background: "var(--cream)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.5 8h5a1.5 1.5 0 0 1 0 3h-5v5"/><path d="M9.5 8v8"/></svg>
-                {job.salary_range}
-              </span>
-            )}
-          </div>
-
-          {/* Apply CTA */}
-          <div style={{ background: "var(--cream)", border: "1px solid var(--line)", borderRadius: 20, padding: 32, textAlign: "center", marginBottom: 32 }}>
-            <p style={{ color: "#555", fontSize: 15, marginBottom: 16, marginTop: 0 }}>
-              {expired
-                ? "This listing has expired. Browse other open roles below."
-                : `Deadline: ${formatDate(job.deadline)} — tap the button to open the application page directly.`}
-            </p>
-            <a
-              href={job.application_link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-accent"
-              style={{ fontSize: 16, padding: "16px 32px", pointerEvents: expired ? "none" : "auto", opacity: expired ? .5 : 1 }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>
-              {expired ? "Application Closed" : "Apply Now — Open Application Page"}
-            </a>
-            {!expired && <p style={{ fontSize: 12, color: "#aaa", margin: "10px 0 0" }}>Opens in a new tab</p>}
-          </div>
-
-          {/* Description */}
-          {job.description && (
-            <div style={{ marginBottom: 32 }}>
-              <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, margin: "0 0 16px" }}>About this role</h2>
-              <div style={{ color: "#444", lineHeight: 1.7, fontSize: 15, whiteSpace: "pre-wrap" }}>{job.description}</div>
-            </div>
+        <article className="detail-card" style={{ marginTop: 12 }}>
+          {!job.is_active && (
+            <p className="alert alert-info" style={{ marginBottom: 16 }}>This listing is archived and hidden from members.</p>
           )}
+          <h1>{job.title}</h1>
+          <p className="org">{job.company}</p>
 
-          <div style={{ borderTop: "1px solid var(--line)", paddingTop: 20, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <p style={{ fontSize: 13, color: "#aaa", margin: 0 }}>
-              Posted {new Date(job.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
+          <div className="apply-panel">
+            <p>
+              {expired
+                ? "The deadline for this role has passed."
+                : "Ready? This takes you straight to the official application page."}
             </p>
-            <Link href="/jobs" style={{ fontSize: 14, color: "var(--blue)", fontWeight: 600 }}>← All jobs</Link>
+            <ApplyButton link={job.application_link} deadline={job.deadline} title={job.title} size="lg" />
           </div>
-        </div>
-      </div>
 
+          <dl className="facts">
+            {facts.map(([k, v]) => (
+              <div key={k}>
+                <dt>{k}</dt>
+                <dd>{v}</dd>
+              </div>
+            ))}
+          </dl>
+
+          {job.description && (
+            <section style={{ marginTop: 28 }}>
+              <h2 className="title-sm" style={{ marginBottom: 12 }}>About this role</h2>
+              <div className="prose">{job.description}</div>
+            </section>
+          )}
+        </article>
+
+        {!expired && (
+          <div className="apply-sticky">
+            <ApplyButton link={job.application_link} deadline={job.deadline} title={job.title} hint={false} />
+          </div>
+        )}
+      </main>
       <Footer />
-    </div>
+    </>
   );
 }

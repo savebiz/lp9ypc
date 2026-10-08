@@ -1,54 +1,45 @@
-import { createClient } from "@/lib/supabase/server";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import JobsClient from "./JobsClient";
-import type { Job, CareerPath } from "@/types";
+import { getSession } from "@/lib/session";
+import type { CareerPath, Job } from "@/types";
 
-export default async function JobsPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+export const metadata = { title: "Jobs · LP9 YPC" };
 
-  let isAdmin = false;
-  let savedJobIds: string[] = [];
-  let userName = "";
+export default async function JobsPage({ searchParams }: { searchParams: Promise<{ path?: string }> }) {
+  const { path } = await searchParams;
+  const { supabase, user, userName, isAdmin } = await getSession();
 
-  if (user) {
-    const { data: p } = await supabase.from("profiles").select("role,full_name").eq("id", user.id).single();
-    isAdmin = p?.role === "admin";
-    userName = p?.full_name ?? "";
-    const { data: saved } = await supabase.from("saved_jobs").select("job_id").eq("member_id", user.id);
-    savedJobIds = (saved ?? []).map((s: { job_id: string }) => s.job_id);
-  }
+  const [jobsRes, pathsRes, savedRes] = await Promise.all([
+    supabase.from("jobs").select("*, career_paths(*)").eq("is_active", true).order("created_at", { ascending: false }),
+    supabase.from("career_paths").select("*").order("name"),
+    user
+      ? supabase.from("saved_jobs").select("job_id").eq("member_id", user.id)
+      : Promise.resolve({ data: [] as { job_id: string }[] }),
+  ]);
 
-  const { data: jobs } = await supabase
-    .from("jobs").select("*, career_paths(*)")
-    .eq("is_active", true)
-    .order("created_at", { ascending: false }) as { data: Job[] | null };
-
-  const { data: careerPaths } = await supabase
-    .from("career_paths").select("*").order("name") as { data: CareerPath[] | null };
+  const jobs = (jobsRes.data ?? []) as Job[];
+  const careerPaths = (pathsRes.data ?? []) as CareerPath[];
+  const savedIds = (savedRes.data ?? []).map((s) => s.job_id);
 
   return (
-    <div>
+    <>
       <Navbar user={user} isAdmin={isAdmin} userName={userName} />
-
-      <section className="wrap page-head">
-        <span className="eyebrow">Opportunities</span>
-        <h1>The jobs board.<br />
-          <span style={{ color: "var(--blue)" }}>{(jobs ?? []).length}</span> roles open.
-        </h1>
-        <p style={{ color: "#555", fontSize: 16, marginTop: 12 }}>
-          Tap <strong>Apply</strong> on any listing to go directly to the application page.
-        </p>
+      <main id="main" className="wrap">
+        <div className="page-head">
+          <span className="eyebrow">Jobs &amp; opportunities</span>
+          <h1 className="title-lg">Find your next role.</h1>
+          <p className="lede">Tap <strong>Apply now</strong> on any job to go straight to its application page.</p>
+        </div>
         <JobsClient
-          initialJobs={jobs ?? []}
-          careerPaths={careerPaths ?? []}
+          initialJobs={jobs}
+          careerPaths={careerPaths}
           userId={user?.id ?? null}
-          initialSavedIds={savedJobIds}
+          initialSavedIds={savedIds}
+          initialPath={path ?? null}
         />
-      </section>
-
+      </main>
       <Footer />
-    </div>
+    </>
   );
 }
