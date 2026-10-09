@@ -6,7 +6,8 @@ import { Check, CircleAlert, CircleCheck, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { PathIcon } from "@/components/ui/icons";
 import { EMPLOYMENT_STATUS_OPTIONS, WORK_MODE_OPTIONS } from "@/lib/utils";
-import type { CareerPath, Profile } from "@/types";
+import { CAREER_GOAL_OPTIONS } from "@/lib/career-match";
+import type { CareerGoal, CareerPath, Profile } from "@/types";
 
 interface Props {
   profile: Profile;
@@ -24,6 +25,7 @@ export default function ProfileForm({ profile, careerPaths, initialPathIds }: Pr
     profession: profile.profession ?? "",
     employment_status: profile.employment_status ?? "",
     preferred_work_mode: profile.preferred_work_mode ?? "",
+    career_goal: (profile.career_goal ?? "") as CareerGoal | "",
     consent_updates: !!profile.consent_updates,
     bio: profile.bio ?? "",
   });
@@ -67,6 +69,7 @@ export default function ProfileForm({ profile, careerPaths, initialPathIds }: Pr
       profession: f.profession,
       employment_status: f.employment_status || null,
       preferred_work_mode: f.preferred_work_mode || null,
+      career_goal: f.career_goal || null,
       consent_updates: f.consent_updates,
       bio: f.bio,
     }).eq("id", profile.id);
@@ -130,7 +133,16 @@ export default function ProfileForm({ profile, careerPaths, initialPathIds }: Pr
 
       <section className="panel" id="paths" aria-labelledby="paths-h" style={{ scrollMarginTop: 88 }}>
         <h2 id="paths-h" className="title-sm">Your career paths</h2>
-        <p className="ink-2" style={{ margin: "6px 0 16px" }}>Pick one or more. We use these to show you the most relevant jobs first.</p>
+        <div className="field" style={{ marginTop: 16 }}>
+          <label className="label" htmlFor="p-career_goal">What are you looking for? <span className="opt">(optional)</span></label>
+          <span className="hint" id="ph-career_goal">We use this to suggest paths you could grow in or move into.</span>
+          <select id="p-career_goal" className="input" aria-describedby="ph-career_goal" value={f.career_goal}
+            onChange={(e) => set("career_goal", e.target.value as CareerGoal | "")}>
+            <option value="">Not set</option>
+            {CAREER_GOAL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+        <p className="ink-2" style={{ margin: "0 0 16px" }}>Pick one or more paths. We use these to show you the most relevant jobs first.</p>
         <div className="options" role="group" aria-labelledby="paths-h">
           {careerPaths.map((cp) => {
             const on = paths.includes(cp.id);

@@ -1,20 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Check, CircleAlert, Eye, EyeOff, Loader2, MailCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CircleAlert, Eye, EyeOff, Info, Loader2, MailCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Logo } from "@/components/layout/Navbar";
 import { PathIcon } from "@/components/ui/icons";
 import { EMPLOYMENT_STATUS_OPTIONS, WORK_MODE_OPTIONS } from "@/lib/utils";
-import type { CareerPath } from "@/types";
+import { CAREER_GOAL_OPTIONS, suggestPathSlugs } from "@/lib/career-match";
+import type { CareerGoal, CareerPath } from "@/types";
+import styles from "./register.module.css";
 
 // The first-stage form asks ONLY for the brief's list (CLAUDE.md, hard rule):
 // full name, phone, email, area of residence, profession, employment status,
 // career path interest, preferred work mode, consent — plus a password so the
-// member can sign back in. Do not add fields here; collect extras later via
-// the profile page.
+// member can sign back in, and the ONE owner-approved optional question
+// "What are you looking for?" (career goal). Do not add fields here; collect
+// extras later via the profile page.
 
 interface Form {
   fullName: string;
@@ -25,12 +28,15 @@ interface Form {
   profession: string;
   employmentStatus: string;
   workMode: string;
+  careerGoal: CareerGoal | "";
   paths: string[];
   consent: boolean;
 }
 type Errors = Partial<Record<keyof Form, string>>;
 
 const STEPS = ["Your details", "Your work", "Your career paths"];
+
+const GOAL_OPTIONS: readonly { value: CareerGoal; label: string }[] = CAREER_GOAL_OPTIONS;
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 function friendlyAuthError(message: string): string {
@@ -48,7 +54,7 @@ export default function RegisterPage() {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<Form>({
     fullName: "", email: "", phone: "", password: "", area: "", profession: "",
-    employmentStatus: "", workMode: "", paths: [], consent: false,
+    employmentStatus: "", workMode: "", careerGoal: "", paths: [], consent: false,
   });
   const [errors, setErrors] = useState<Errors>({});
   const [showPw, setShowPw] = useState(false);
@@ -85,6 +91,37 @@ export default function RegisterPage() {
     set("paths", form.paths.includes(id) ? form.paths.filter((p) => p !== id) : [...form.paths, id]);
   }
 
+  function chooseGoal(goal: CareerGoal) {
+    const nextGoal = form.careerGoal === goal ? "" : goal;
+    set("careerGoal", nextGoal);
+    // "Not sure yet" makes paths optional, so clear a stale "choose a path" error.
+    if (nextGoal === "explore" && errors.paths) setErrors((e) => ({ ...e, paths: undefined }));
+  }
+
+  // Instant keyword match on the profession from step 2 (no network). The
+  // career-research agent adds richer suggestions to the dashboard later.
+  const pathGroups = useMemo(() => {
+    const bySlug = new Map(careerPaths.map((cp) => [cp.slug, cp]));
+    const suggested = suggestPathSlugs(form.profession)
+      .map((slug) => bySlug.get(slug))
+      .filter((cp): cp is CareerPath => !!cp);
+    const suggestedIds = new Set(suggested.map((cp) => cp.id));
+    const others = careerPaths.filter((cp) => !suggestedIds.has(cp.id));
+    if (suggested.length === 0) {
+      return [{ key: "all", title: form.careerGoal === "switch" ? "Paths you could move into" : "All career paths", paths: careerPaths }];
+    }
+    if (form.careerGoal === "switch") {
+      return [
+        { key: "move", title: "Paths you could move into", paths: others },
+        { key: "related", title: "Related to your current work", paths: suggested },
+      ];
+    }
+    return [
+      { key: "suggested", title: "Suggested from your profession", paths: suggested },
+      { key: "others", title: "All other career paths", paths: others },
+    ];
+  }, [careerPaths, form.profession, form.careerGoal]);
+
   function validate(s: number): Errors {
     const e: Errors = {};
     if (s === 0) {
@@ -99,7 +136,9 @@ export default function RegisterPage() {
       if (!form.profession.trim()) e.profession = "Tell us your profession or field";
       if (!form.employmentStatus) e.employmentStatus = "Choose one";
     }
-    if (s === 2 && form.paths.length === 0) e.paths = "Choose at least one career path";
+    if (s === 2 && form.paths.length === 0 && form.careerGoal !== "explore") {
+      e.paths = "Choose at least one career path, or pick “Not sure yet” above";
+    }
     return e;
   }
 
@@ -136,6 +175,7 @@ export default function RegisterPage() {
           profession: form.profession.trim(),
           employment_status: form.employmentStatus,
           preferred_work_mode: form.workMode || null,
+          career_goal: form.careerGoal || null,
           consent_updates: form.consent,
           career_path_ids: form.paths,
         },
@@ -252,8 +292,30 @@ export default function RegisterPage() {
           <>
             <h1 ref={headingRef} tabIndex={-1} className="title-lg">Your career paths.</h1>
             <p className="lede" style={{ margin: "8px 0 24px" }}>Pick one or more. You can change these anytime.</p>
-            <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
-              <legend className="sr-only" id="f-paths" tabIndex={-1}>Career paths</legend>
+
+            <fieldset className={styles.goal}>
+              <legend className="label" id="l-careerGoal">
+                What are you looking for? <span className="opt">(optional)</span>
+              </legend>
+              <div className="options" role="radiogroup" aria-labelledby="l-careerGoal">
+                {GOAL_OPTIONS.map((o) => (
+                  <Option key={o.value} type="radio" on={form.careerGoal === o.value} onClick={() => chooseGoal(o.value)}>
+                    {o.label}
+                  </Option>
+                ))}
+              </div>
+              {form.careerGoal === "explore" && (
+                <div className="alert alert-info" role="status" style={{ marginTop: 12 }}>
+                  <Info size={18} aria-hidden="true" />
+                  <span>No problem — skip for now; we&apos;ll suggest paths on your dashboard.</span>
+                </div>
+              )}
+            </fieldset>
+
+            <fieldset className={styles.paths} aria-describedby={errors.paths ? "e-paths" : undefined}>
+              <legend className="sr-only" id="f-paths" tabIndex={-1}>
+                Career paths{form.careerGoal === "explore" ? " (optional)" : ""}
+              </legend>
               {pathsState === "loading" && <p className="row muted"><Loader2 size={18} className="spin" aria-hidden="true" /> Loading career paths…</p>}
               {pathsState === "error" && (
                 <div className="alert alert-error" role="alert">
@@ -264,16 +326,19 @@ export default function RegisterPage() {
                   </span>
                 </div>
               )}
-              {pathsState === "ready" && (
-                <div className="options">
-                  {careerPaths.map((cp) => (
-                    <Option key={cp.id} type="checkbox" on={form.paths.includes(cp.id)} onClick={() => togglePath(cp.id)}
-                      icon={<PathIcon slug={cp.slug} size={20} className="option-icon" />}>
-                      {cp.name}
-                    </Option>
-                  ))}
+              {pathsState === "ready" && pathGroups.filter((g) => g.paths.length > 0).map((g) => (
+                <div key={g.key} className={styles.group} role="group" aria-labelledby={`g-${g.key}`}>
+                  <h2 id={`g-${g.key}`} className={styles.groupTitle}>{g.title}</h2>
+                  <div className="options">
+                    {g.paths.map((cp) => (
+                      <Option key={cp.id} type="checkbox" on={form.paths.includes(cp.id)} onClick={() => togglePath(cp.id)}
+                        icon={<PathIcon slug={cp.slug} size={20} className="option-icon" />}>
+                        {cp.name}
+                      </Option>
+                    ))}
+                  </div>
                 </div>
-              )}
+              ))}
               {errors.paths && <div style={{ marginTop: 10 }}><FieldError id="paths" msg={errors.paths} /></div>}
             </fieldset>
 
@@ -290,7 +355,7 @@ export default function RegisterPage() {
             </div>
             <p className="small muted" style={{ marginTop: 12 }}>
               By creating an account you agree to how we handle your data in our{" "}
-              <Link href="/about#privacy" className="btn-link" style={{ minHeight: 0, padding: 0 }}>privacy notice</Link>.
+              <Link href="/privacy" className="btn-link" style={{ minHeight: 0, padding: 0 }}>privacy notice</Link>.
             </p>
           </>
         )}
@@ -311,7 +376,7 @@ export default function RegisterPage() {
               <ArrowLeft size={18} aria-hidden="true" /> Back
             </button>
           ) : <span />}
-          <button type="submit" className="btn btn-action btn-lg" disabled={submitting || (step === 2 && pathsState !== "ready")}>
+          <button type="submit" className="btn btn-action btn-lg" disabled={submitting || (step === 2 && pathsState !== "ready" && form.careerGoal !== "explore")}>
             {submitting ? <><Loader2 size={18} className="spin" aria-hidden="true" /> Creating your account…</>
               : step === 2 ? <>Create my account <Check size={20} aria-hidden="true" /></>
               : <>Continue <ArrowRight size={20} aria-hidden="true" /></>}

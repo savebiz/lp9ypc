@@ -1,0 +1,190 @@
+/* Admin backend — additions on top of the Calm Kinetic admin classes in globals.css. */
+
+/* Ten tabs: the bar scrolls sideways on small screens instead of squashing. */
+.tabs {
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.tabs > button[role="tab"] {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+@media (min-width: 1100px) {
+  .tabs > button[role="tab"] { flex: 1 0 auto; }
+}
+
+/* Feedback message pinned to the bottom of the screen, so it's seen wherever the admin has scrolled. */
+.feedbackRegion {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 90;
+  padding: 0 16px calc(16px + env(safe-area-inset-bottom));
+  pointer-events: none;
+  display: flex;
+  justify-content: center;
+}
+.feedback {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  max-width: 640px;
+  padding: 8px 6px 8px 16px;
+  border-radius: var(--r-card);
+  font-size: 15px;
+  line-height: 1.45;
+  box-shadow: 0 8px 24px rgba(11, 15, 44, .18);
+}
+.feedback > svg { flex-shrink: 0; margin-top: 12px; }
+.feedbackText { flex: 1; min-width: 0; padding: 10px 0; overflow-wrap: anywhere; }
+.feedbackOk { background: var(--ok-soft); color: var(--ok-ink); border: 1px solid #B9E3C7; }
+.feedbackError { background: var(--coral-soft); color: var(--coral-ink); border: 1px solid #F1BDB6; }
+.feedback :global(.icon-btn) { color: inherit; }
+
+/* Overview: a stat with work waiting. */
+.statAttention:global(.stat) { border-color: var(--line-strong); background: var(--cream); }
+
+/* Review cards (jobs, held posts, reports, ideas). */
+.reviewCard:global(.card) { padding: 16px; }
+.cardTitle {
+  font-family: var(--body);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+.postTitle { font-weight: 600; line-height: 1.4; }
+
+.facts {
+  display: grid;
+  gap: 6px 16px;
+  margin: 12px 0 0;
+  font-size: 15px;
+}
+.facts div { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
+.facts dt { width: 128px; flex-shrink: 0; color: var(--muted); font-size: 14px; }
+.facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+@media (min-width: 760px) { .facts { grid-template-columns: 1fr 1fr; } }
+
+.details { margin-top: 10px; }
+.details > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+.details > p { margin-top: 6px; }
+
+.quoted {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--line-strong);
+  background: var(--cream);
+  border-radius: 0 var(--r-input) var(--r-input) 0;
+}
+
+.inlineLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 4px;
+  color: var(--blue);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.inlineLink svg { display: inline-block; flex-shrink: 0; }
+
+.warn { color: var(--coral-ink); font-weight: 600; }
+.okIcon { color: var(--ok-ink); }
+
+.dangerGhost:global(.btn) { color: var(--coral-ink); border-color: var(--coral-ink); }
+
+/* List rows whose actions include a text button: stack the actions under the text on phones. */
+.stackOnMobile { flex-wrap: wrap; }
+.stackOnMobile.stackOnMobile > :global(.grow) { flex: 1 1 220px; }
+.stackOnMobile > :global(.actions) { flex-wrap: wrap; align-items: center; }
+
+/* Communities: managers + picker. */
+.managers { margin-top: 10px; }
+.managerList { list-style: none; margin: 2px 0 0; padding: 0; }
+.managerList li { display: flex; align-items: center; gap: 4px 12px; flex-wrap: wrap; }
+.picker {
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--cream);
+}
+.pickList { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.pickItem {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  text-align: left;
+  background: var(--white);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--r-input);
+}
+.pickItem:hover { border-color: var(--ink); }
+.pickItem > span:first-child { min-width: 0; }
+
+/* Career ideas: evidence links. */
+.evidence { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; font-size: 15px; }
+
+/* Agents: set-up checklist. */
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.check { display: flex; gap: 10px; align-items: flex-start; }
+.check > svg { flex-shrink: 0; margin-top: 3px; }
+
+/* News & events: date / place / link row. */
+.metaRow { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.metaRow > span { display: inline-flex; align-items: center; gap: 6px; }
+.metaRow svg { display: inline-block; flex-shrink: 0; }
+
+/* Long unbroken text (hostnames, emails) must wrap, never widen the page at 375px. */
+.panel :global(.list) > * { min-width: 0; }
+.panel :global(.list-item .grow) { overflow-wrap: anywhere; }
+
+/* List rows with a full-width area under the title row (communities). */
+.itemColumn:global(.list-item) { flex-direction: column; align-items: stretch; gap: 0; }
+.itemHead { display: flex; gap: 12px; align-items: flex-start; }
+.itemMain { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.itemFull { min-width: 0; }
+.pickItem { flex-wrap: wrap; }
+
+/* Long post bodies in the moderation queue: tap to expand. */
+.excerpt { margin-top: 4px; }
+.excerpt > summary {
+  display: block;
+  list-style: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.excerpt > summary::-webkit-details-marker { display: none; }
+.excerpt[open] > summary { display: none; }
+.more {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--blue);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
