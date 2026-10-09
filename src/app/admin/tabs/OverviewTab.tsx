@@ -34,7 +34,7 @@ export default function OverviewTab({ jobs, members, careerPaths, memberPaths, p
         <Stat n={activeJobs} label="Open jobs" />
         <Stat n={optedIn} label="Opted in to updates" />
         <ActionStat n={pendingJobs} label="Jobs awaiting review" cta="Review jobs" onClick={() => onGoTo("review")} />
-        <ActionStat n={heldPosts} label="Posts held for review" cta="Check posts" onClick={() => onGoTo("moderation")} />
+        <ActionStat n={heldPosts} label="Posts needing review" cta="Check posts" onClick={() => onGoTo("moderation")} />
       </div>
       <section className="card" aria-labelledby="bypath-h">
         <h2 id="bypath-h" className="title-sm" style={{ marginBottom: 4 }}>Registrations by career path</h2>

@@ -198,7 +198,7 @@ export default async function ManageCommunityPage({ params }: { params: Promise<
           <span className="eyebrow">Manage</span>
           <h1 className="title-md" style={{ marginTop: 8, overflowWrap: "anywhere" }}>{community.name}</h1>
           <p className="lede">
-            Posts held for review, reports from members, and what&apos;s been done recently. Every action here is logged.
+            Posts needing review, reports from members, and what&apos;s been done recently. Every action here is logged.
           </p>
         </div>
 
