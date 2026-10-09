@@ -1,0 +1,51 @@
+.filters {
+  padding: 4px 0 8px;
+}
+
+.section {
+  margin-top: 32px;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-bottom: 14px;
+}
+
+.list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.emptyIcon {
+  margin: 0 auto 10px;
+  color: var(--blue);
+}
+
+.emptyText {
+  max-width: 46ch;
+  margin: 0 auto;
+}
+
+.emptyAction {
+  margin-top: 6px;
+}
+
+@media (min-width: 768px) {
+  .section {
+    margin-top: 48px;
+  }
+}
+
+@media (min-width: 900px) {
+  .events {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+}

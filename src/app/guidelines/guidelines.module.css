@@ -1,0 +1,130 @@
+.section {
+  margin-top: 40px;
+  scroll-margin-top: 88px;
+}
+
+.section > h2 {
+  margin-bottom: 14px;
+}
+
+/* The guidelines themselves */
+.rules {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rule {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  height: 100%;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--paper);
+  scroll-margin-top: 88px;
+}
+
+.ruleBody {
+  min-width: 0;
+}
+
+.ruleBody h3 {
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.ruleBody > * + * {
+  margin-top: 8px;
+}
+
+.ruleBody p {
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+@media (min-width: 900px) {
+  .rules {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+}
+
+/* How moderation works */
+.steps {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.step {
+  position: relative;
+  padding: 16px 16px 16px 60px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--cream);
+  counter-increment: step;
+}
+
+.step::before {
+  content: counter(step);
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: var(--white);
+  font-family: var(--display);
+  font-weight: 700;
+}
+
+.step h3 {
+  font-family: var(--body);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.4;
+}
+
+.step p {
+  margin-top: 4px;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+
+/* Running text */
+.prose {
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.prose > * + * {
+  margin-top: 12px;
+}
+
+.prose a,
+.ruleBody a {
+  color: var(--blue);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.prose strong {
+  color: var(--ink);
+}
+
+.end {
+  margin-top: 40px;
+}

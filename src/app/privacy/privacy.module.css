@@ -1,0 +1,142 @@
+.updated {
+  margin-top: 12px;
+}
+
+.summary {
+  margin-bottom: 32px;
+}
+
+/* Bulleted lists (Tailwind's base styles remove bullets, so add them back). */
+.summary ul,
+.prose ul:not(.pairs) {
+  padding-left: 22px;
+  list-style: disc;
+}
+
+.summary li + li,
+.prose ul:not(.pairs) li + li {
+  margin-top: 6px;
+}
+
+.summary li::marker,
+.prose ul:not(.pairs) li::marker {
+  color: var(--blue);
+}
+
+/* On-page contents */
+.toc {
+  margin-bottom: 8px;
+}
+
+.toc ol {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.toc a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 4px 0;
+  font-weight: 600;
+}
+
+.tocNum {
+  min-width: 1.6em;
+  color: var(--muted);
+}
+
+.tocText {
+  color: var(--blue);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Sections */
+.section {
+  margin-top: 40px;
+  scroll-margin-top: 88px;
+}
+
+.section > h2 {
+  margin-bottom: 14px;
+}
+
+.prose {
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.prose > * + * {
+  margin-top: 12px;
+}
+
+.prose h3 {
+  margin-top: 24px;
+  font-size: 18px;
+  color: var(--ink);
+}
+
+.prose > h3:first-child {
+  margin-top: 0;
+}
+
+.prose strong {
+  color: var(--ink);
+}
+
+.prose a,
+.summary a {
+  color: var(--blue);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Purpose → lawful basis, and audience → what they see */
+.pairs {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pair {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--paper);
+}
+
+.pair h3,
+.pair .pairTitle {
+  margin: 0;
+  font-family: var(--body);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.pair p {
+  margin-top: 4px;
+}
+
+.basis {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 2px 10px;
+  border-radius: var(--r-pill);
+  background: var(--blue-soft);
+  color: var(--blue-dk);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.back {
+  margin-top: 48px;
+}
