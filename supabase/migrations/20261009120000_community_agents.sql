@@ -492,13 +492,18 @@ create policy "communities: admins update" on public.communities for update to a
 create policy "communities: admins delete" on public.communities for delete to authenticated using ((select public.is_admin()));
 
 -- community_members: members join/leave themselves (as 'member' only);
--- admins assign or remove managers.
+-- admins assign or remove managers. (Counts for everyone come from community_overview.)
 drop policy if exists "community_members: members read"       on public.community_members;
+drop policy if exists "community_members: read own, managers, or as moderator" on public.community_members;
 drop policy if exists "community_members: join as member"     on public.community_members;
 drop policy if exists "community_members: admins add"         on public.community_members;
 drop policy if exists "community_members: admins change role" on public.community_members;
 drop policy if exists "community_members: leave or admin remove" on public.community_members;
-create policy "community_members: members read" on public.community_members for select to authenticated using (true);
+-- Privacy: which communities someone belongs to (e.g. Health & Wellbeing) is
+-- their business. Members see their own memberships and each community's
+-- managers; full member lists are visible only to that community's moderators.
+create policy "community_members: read own, managers, or as moderator" on public.community_members for select to authenticated
+  using (member_id = (select auth.uid()) or role = 'manager' or (select public.can_moderate(community_id)));
 create policy "community_members: join as member" on public.community_members for insert to authenticated
   with check (
     member_id = (select auth.uid())

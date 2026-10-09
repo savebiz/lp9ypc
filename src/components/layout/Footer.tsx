@@ -18,7 +18,8 @@ export default function Footer() {
             <h2>Explore</h2>
             <ul>
               <li><Link href="/jobs">Jobs board</Link></li>
-              <li><Link href="/register">Join YPC</Link></li>
+              <li><Link href="/community">Communities</Link></li>
+              <li><Link href="/news">News &amp; events</Link></li>
               <li><Link href="/about">About YPC</Link></li>
               <li><Link href="/about#faq">FAQs</Link></li>
             </ul>
@@ -27,7 +28,8 @@ export default function Footer() {
             <h2>Support</h2>
             <ul>
               <li><a href={`mailto:${SITE.contactEmail}`}>{SITE.contactEmail}</a></li>
-              <li><Link href="/about#privacy">Privacy &amp; data</Link></li>
+              <li><Link href="/privacy">Privacy policy</Link></li>
+              <li><Link href="/guidelines">Community guidelines</Link></li>
               <li><Link href="/login">Member sign in</Link></li>
             </ul>
           </div>

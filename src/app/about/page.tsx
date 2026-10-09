@@ -16,7 +16,7 @@ const VALUES = [
 const FAQS: [string, string][] = [
   ["Is YPC free to join?", "Yes. Registering on the platform is free."],
   ["Do I have to be a member of RCCG?", "No. YPC is open to young professionals in Lagos Province 9 and the surrounding area."],
-  ["Where do the jobs come from?", "Jobs are shared by YPC coordinators. Each one links to the employer's or referrer's own application page. As with any job, check the employer's details before you share personal information, and never pay to apply."],
+  ["Where do the jobs come from?", "Jobs are shared by YPC coordinators, or found by our jobs assistant on sites they choose and then checked by a coordinator before they appear. Each one links to the employer's or referrer's own application page. As with any job, check the employer's details before you share personal information, and never pay to apply."],
   ["Can I update my details later?", "Yes, anytime. Sign in, open your dashboard and choose Update profile. You can change your career paths and update preferences there too."],
   ["How do I find jobs in my field?", "On the Jobs page, tap a career path or use Filters to narrow by work mode, job type, experience and location."],
 ];
@@ -82,6 +82,11 @@ export default async function AboutPage() {
               We only send you updates if you ticked &ldquo;Send me YPC updates&rdquo;. You can change that, or correct your
               details, anytime from your profile. To have your account deleted, email{" "}
               <a href={`mailto:${SITE.contactEmail}`} className="btn-link" style={{ minHeight: 0, padding: 0 }}>{SITE.contactEmail}</a>.
+            </p>
+            <p>
+              Read the full <Link href="/privacy" className="btn-link" style={{ minHeight: 0, padding: 0 }}>privacy policy</Link>,
+              including how our AI assistants are used, and our{" "}
+              <Link href="/guidelines" className="btn-link" style={{ minHeight: 0, padding: 0 }}>community guidelines</Link>.
             </p>
           </div>
         </section>

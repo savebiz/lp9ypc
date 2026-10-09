@@ -40,11 +40,14 @@ export default function Navbar({ user, isAdmin, userName }: NavbarProps) {
 
   const links = [
     { href: "/jobs", label: "Jobs" },
+    { href: "/community", label: "Community" },
+    { href: "/news", label: "News & events" },
     { href: "/about", label: "About" },
     ...(user ? [{ href: "/dashboard", label: "My dashboard" }] : []),
     ...(isAdmin ? [{ href: "/admin", label: "Admin" }] : []),
   ];
-  const current = (href: string) => (pathname === href ? "page" : undefined);
+  const current = (href: string) =>
+    pathname === href || (href !== "/" && pathname.startsWith(`${href}/`)) ? "page" : undefined;
 
   return (
     <header className="nav">

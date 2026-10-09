@@ -5,20 +5,27 @@ import Footer from "@/components/layout/Footer";
 import { HeroArt } from "@/components/ui/YPCMark";
 import { PathIcon } from "@/components/ui/icons";
 import { getSession } from "@/lib/session";
-import { formatDate } from "@/lib/utils";
 import { BENEFITS, HERO, MISSION, STEPS } from "@/content/site";
-import type { Announcement, CareerPath } from "@/types";
+import EventCard from "@/components/news/EventCard";
+import AnnouncementItem from "@/components/news/AnnouncementItem";
+import { NEWS_COLUMNS, type NewsItem } from "@/components/news/news";
+import type { CareerPath } from "@/types";
 
 const BENEFIT_ICONS = { jobs: Briefcase, paths: Compass, community: Megaphone } as const;
 
 export default async function LandingPage() {
   const { supabase, user, userName, isAdmin } = await getSession();
 
-  const [annRes, pathsRes] = await Promise.all([
-    supabase.from("announcements").select("*").eq("is_active", true).order("created_at", { ascending: false }).limit(3),
+  const now = new Date().toISOString();
+  const [annRes, eventsRes, pathsRes] = await Promise.all([
+    supabase.from("announcements").select(NEWS_COLUMNS).eq("is_active", true).eq("kind", "announcement")
+      .order("created_at", { ascending: false }).limit(3),
+    supabase.from("announcements").select(NEWS_COLUMNS).eq("is_active", true).eq("kind", "event")
+      .or(`starts_at.gte."${now}",ends_at.gte."${now}"`).order("starts_at", { ascending: true }).limit(3),
     supabase.from("career_paths").select("*").order("name"),
   ]);
-  const announcements = (annRes.data ?? []) as Announcement[];
+  const announcements = (annRes.data ?? []) as unknown as NewsItem[];
+  const events = (eventsRes.data ?? []) as unknown as NewsItem[];
   const careerPaths = (pathsRes.data ?? []) as CareerPath[];
 
   return (
@@ -56,20 +63,24 @@ export default async function LandingPage() {
           </div>
         </section>
 
-        {/* ── Announcements ────────────────────────────────────── */}
-        {announcements.length > 0 && (
-          <section className="wrap" aria-labelledby="ann-title" style={{ paddingBottom: 16 }}>
-            <h2 id="ann-title" className="eyebrow" style={{ marginBottom: 12 }}>Announcements</h2>
-            <div className="announcements">
-              {announcements.map((a) => (
-                <article key={a.id} className="announcement">
-                  <div>
-                    <h3>{a.title}</h3>
-                    {a.content && <p>{a.content}</p>}
-                    <time dateTime={a.created_at}>{formatDate(a.created_at)}</time>
-                  </div>
-                </article>
-              ))}
+        {/* ── News & events ────────────────────────────────────── */}
+        {(events.length > 0 || announcements.length > 0) && (
+          <section className="wrap" aria-labelledby="news-title" style={{ paddingBottom: 16 }}>
+            <div className="spread" style={{ marginBottom: 12 }}>
+              <h2 id="news-title" className="eyebrow">News &amp; events</h2>
+              <Link href="/news" className="btn-link">See all news &amp; events</Link>
+            </div>
+            <div className="stack">
+              {events.length > 0 && (
+                <div className="announcements">
+                  {events.map((e) => <EventCard key={e.id} event={e} compact />)}
+                </div>
+              )}
+              {announcements.length > 0 && (
+                <div className="announcements">
+                  {announcements.map((a) => <AnnouncementItem key={a.id} item={a} compact />)}
+                </div>
+              )}
             </div>
           </section>
         )}
