@@ -2,5 +2,10 @@
   "framework": "nextjs",
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "crons": [
+    { "path": "/api/cron/career-research", "schedule": "0 3 * * *" },
+    { "path": "/api/cron/moderation-sweep", "schedule": "0 4 * * *" },
+    { "path": "/api/cron/job-scraper", "schedule": "0 6 * * *" }
+  ]
 }
