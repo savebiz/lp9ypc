@@ -7,7 +7,7 @@ behind the live site no longer exists, and its schema was never saved.
 |---|---|
 | `migrations/20261008120000_initial_schema.sql` | Phase 1: profiles, career paths, jobs, saved jobs, announcements; RLS; signup trigger; the 10 career paths |
 | `migrations/20261009120000_community_agents.sql` | Phase 2: career goal, AI-agent tables, job sources + review queue, News & events fields, communities, discussion board, reports, moderation and agent logs; 17 starter communities |
-| `verify.sql` | 24 read-only checks to run after both migrations. Every row should say `true`. |
+| `verify.sql` | 27 read-only checks to run after both migrations. Every row should say `true`. |
 | `../.env.example` | Every environment variable the app reads |
 
 **Status:** reviewed line by line against every database call in `src/`.
@@ -42,7 +42,7 @@ supabase.com/dashboard → **New project**
 Each should say "Success. No rows returned."
 
 ### 3. Verify
-New query → paste `verify.sql` → **Run**. All 24 rows should say `true`.
+New query → paste `verify.sql` → **Run**. All 27 rows should say `true`.
 Check 15 becomes `false` once you make yourself an admin (step 7); that's
 expected.
 
@@ -155,11 +155,20 @@ Admins can also press **Run now** on a job source.
   the signup data.
 - **Discussion posts** can't be written directly by anyone's browser. Every
   post goes through a server route that checks the session, membership,
-  locks and rate limits, runs moderation, and only then saves the post.
+  locks and a rate limit (10 posts per 10 minutes, enforced inside the
+  database so parallel requests can't slip past it), runs moderation, and
+  only then publishes the post.
+- **Moderation notes stay private.** Why a post was held, and whether the
+  assistant or a person held it, is hidden from members by column
+  privileges; managers read it through `post_moderation_notes()`, which only
+  answers for communities they moderate.
+- **Reports can't be edited by members** once filed, and replies inside a
+  held or removed discussion are hidden along with it.
 - **Other members see only "First L."** on posts, never profiles or contact
   details.
 - **Managers** moderate only their own community; admins moderate everywhere.
-  Every action is logged.
+  Every action is logged. A manager can't approve their own held post;
+  another manager or an admin has to.
 - **The AI assistants only propose.** Scraped jobs wait for approval; new
   career paths wait for approval; held posts wait for a human.
 - **Every job's Apply link must be `http(s)`**, and scraped Apply links must

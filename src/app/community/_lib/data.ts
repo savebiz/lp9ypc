@@ -34,10 +34,10 @@ export const loadCommunity = cache(async (slug: string): Promise<{ community: Co
 });
 
 export const THREAD_COLUMNS =
-  "id, community_id, author_id, title, body, status, needs_review, moderation_reason, moderation_categories, moderated_by, is_pinned, is_locked, reply_count, last_activity_at, created_at, updated_at";
+  "id, community_id, author_id, title, body, status, needs_review, is_pinned, is_locked, reply_count, last_activity_at, created_at, updated_at";
 
 export const REPLY_COLUMNS =
-  "id, thread_id, community_id, author_id, body, status, needs_review, moderation_reason, moderation_categories, moderated_by, created_at, updated_at";
+  "id, thread_id, community_id, author_id, body, status, needs_review, created_at, updated_at";
 
 /**
  * One thread by id, as the signed-in viewer is allowed to see it (RLS hides

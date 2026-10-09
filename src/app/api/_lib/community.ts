@@ -16,18 +16,30 @@ export const POST_MESSAGES = {
   saveFailed: "We couldn't save your post just now. Please try again.",
 } as const;
 
-/** True when the author already has ≥ 10 posts (threads + replies, any status) in the last 10 minutes. Null on error. */
-export async function isRateLimited(admin: SupabaseClient, userId: string): Promise<boolean | null> {
-  const since = new Date(Date.now() - POST_WINDOW_MS).toISOString();
-  const [threads, replies] = await Promise.all([
-    admin.from("threads").select("id", { count: "exact", head: true }).eq("author_id", userId).gte("created_at", since),
-    admin.from("replies").select("id", { count: "exact", head: true }).eq("author_id", userId).gte("created_at", since),
-  ]);
-  if (threads.error || replies.error) {
-    console.error(`[api/community] rate-limit count failed (${threads.error?.code ?? replies.error?.code ?? "unknown"})`);
+/**
+ * Atomically checks the rate limit (10 posts per 10 minutes, threads + replies)
+ * and creates the post as 'pending' in one database call, under a per-author
+ * lock — so parallel requests can't all slip under the limit.
+ * Returns the new post id, "limited", or null on error.
+ */
+export async function claimPostSlot(
+  admin: SupabaseClient,
+  slot: { authorId: string; communityId: string; threadId: string | null; title: string | null; body: string },
+): Promise<string | "limited" | null> {
+  const { data, error } = await admin.rpc("claim_post_slot", {
+    p_author: slot.authorId,
+    p_community: slot.communityId,
+    p_thread: slot.threadId,
+    p_title: slot.title,
+    p_body: slot.body,
+    p_limit: POST_LIMIT,
+    p_window: `${POST_WINDOW_MS / 60000} minutes`,
+  });
+  if (error) {
+    console.error(`[api/community] claim_post_slot failed (${error.code ?? "unknown"})`);
     return null;
   }
-  return (threads.count ?? 0) + (replies.count ?? 0) >= POST_LIMIT;
+  return typeof data === "string" && data ? data : "limited";
 }
 
 /** Security-relevant columns come from moderation, never from the request body. */

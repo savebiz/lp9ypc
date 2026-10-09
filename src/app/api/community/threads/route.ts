@@ -9,7 +9,7 @@
 import { moderatePost } from "@/lib/agents/moderation";
 import { MESSAGES, checkOrigin, fail, json, parseBody, requireServiceRole, requireUser } from "@/app/api/_lib/http";
 import { boundedText, isUuid } from "@/app/api/_lib/guards";
-import { POST_MESSAGES, isRateLimited, logPostModeration, moderationColumns, postMessage } from "@/app/api/_lib/community";
+import { POST_MESSAGES, claimPostSlot, logPostModeration, moderationColumns, postMessage } from "@/app/api/_lib/community";
 
 export const dynamic = "force-dynamic";
 
@@ -53,23 +53,21 @@ export async function POST(req: Request) {
   if (memberError) return fail(500, MESSAGES.serverError);
   if (!membership) return fail(403, "Join this community to post here.");
 
-  const limited = await isRateLimited(admin, user.id);
-  if (limited === null) return fail(503, POST_MESSAGES.saveFailed);
-  if (limited) return fail(429, POST_MESSAGES.rateLimited);
+  const slot = await claimPostSlot(admin, { authorId: user.id, communityId: c.id, threadId: null, title, body: text });
+  if (slot === null) return fail(503, POST_MESSAGES.saveFailed);
+  if (slot === "limited") return fail(429, POST_MESSAGES.rateLimited);
+  const id = slot;
 
   const result = await moderatePost({ kind: "thread", title, body: text, communityName: c.name });
   const columns = moderationColumns(result);
 
-  const { data: inserted, error: insertError } = await admin
-    .from("threads")
-    .insert({ community_id: c.id, author_id: user.id, title, body: text, ...columns })
-    .select("id")
-    .single();
-  if (insertError || !inserted) {
-    console.error(`[api/community/threads] insert failed (${insertError?.code ?? "no row"})`);
+  // The post already exists as 'pending' (invisible to others). If this update
+  // fails, the moderation sweep picks up the stuck pending post.
+  const { error: updateError } = await admin.from("threads").update(columns).eq("id", id);
+  if (updateError) {
+    console.error(`[api/community/threads] update failed (${updateError.code ?? "unknown"})`);
     return fail(500, POST_MESSAGES.saveFailed);
   }
-  const id = (inserted as { id: string }).id;
 
   await logPostModeration(admin, { communityId: c.id, targetType: "thread", targetId: id, result });
 

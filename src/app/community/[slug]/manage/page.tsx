@@ -7,6 +7,7 @@ import Footer from "@/components/layout/Footer";
 import { ActionButton } from "@/components/community/ModActions";
 import { StatusBadge, TimeAgo, categoryLabel } from "@/components/community/PostBits";
 import { ToastHost } from "@/components/community/Toast";
+import { withModerationNotes } from "@/lib/moderation-notes";
 import styles from "@/components/community/community.module.css";
 import { getSession } from "@/lib/session";
 import { displayNames, loadCommunity, nameOf, viewerRole } from "../../_lib/data";
@@ -27,6 +28,7 @@ interface HeldThread {
   title: string;
   body: string;
   status: PostStatus;
+  needs_review: boolean;
   moderation_reason: string | null;
   moderation_categories: string[] | null;
   moderated_by: "agent" | "human" | null;
@@ -105,16 +107,16 @@ export default async function ManageCommunityPage({ params }: { params: Promise<
   const [heldThreadsRes, heldRepliesRes, reportsRes, logRes] = await Promise.all([
     supabase
       .from("threads")
-      .select("id, author_id, title, body, status, moderation_reason, moderation_categories, moderated_by, created_at")
+      .select("id, author_id, title, body, status, needs_review, created_at")
       .eq("community_id", cid)
-      .eq("status", "held")
+      .or("status.eq.held,and(status.eq.visible,needs_review.eq.true)")
       .order("created_at", { ascending: true })
       .limit(50),
     supabase
       .from("replies")
-      .select("id, thread_id, author_id, body, status, moderation_reason, moderation_categories, moderated_by, created_at")
+      .select("id, thread_id, author_id, body, status, needs_review, created_at")
       .eq("community_id", cid)
-      .eq("status", "held")
+      .or("status.eq.held,and(status.eq.visible,needs_review.eq.true)")
       .order("created_at", { ascending: true })
       .limit(50),
     supabase
@@ -132,8 +134,10 @@ export default async function ManageCommunityPage({ params }: { params: Promise<
       .limit(30),
   ]);
 
-  const heldThreads = (heldThreadsRes.data ?? []) as HeldThread[];
-  const heldReplies = (heldRepliesRes.data ?? []) as HeldReply[];
+  const [heldThreads, heldReplies] = await Promise.all([
+    withModerationNotes(supabase, "thread", (heldThreadsRes.data ?? []) as HeldThread[]),
+    withModerationNotes(supabase, "reply", (heldRepliesRes.data ?? []) as HeldReply[]),
+  ]);
   const reports = (reportsRes.data ?? []) as Pick<Report, "id" | "community_id" | "target_type" | "target_id" | "reason" | "status" | "created_at">[];
   const log = (logRes.data ?? []) as ModerationLogEntry[];
   const heldFailed = !!heldThreadsRes.error || !!heldRepliesRes.error;
@@ -202,13 +206,13 @@ export default async function ManageCommunityPage({ params }: { params: Promise<
           {/* ── Held for review ─────────────────────────────────────── */}
           <section className="panel" aria-labelledby="held-h">
             <div className="panel-head">
-              <h2 id="held-h">Held for review</h2>
+              <h2 id="held-h">Needs your review</h2>
               {!heldFailed && <span className={styles.panelCount}>{held.length} waiting</span>}
             </div>
             {heldFailed ? (
               <div className="empty" role="status">We couldn&apos;t load held posts right now. Please try again in a moment.</div>
             ) : held.length === 0 ? (
-              <p className="ink-2 row"><Inbox size={18} aria-hidden="true" /> Nothing waiting. Held posts will appear here.</p>
+              <p className="ink-2 row"><Inbox size={18} aria-hidden="true" /> Nothing waiting. Held posts, and posts that missed the automatic check, appear here.</p>
             ) : (
               <ul className={styles.queue}>
                 {held.map(({ kind, post, title, threadId }) => {
@@ -232,7 +236,11 @@ export default async function ManageCommunityPage({ params }: { params: Promise<
                       <p className={styles.excerpt}>{post.body}</p>
                       <div className={styles.note}>
                         <p>
-                          <strong>{post.moderated_by === "human" ? "Held by a moderator." : "Held by the moderation assistant."}</strong>
+                          <strong>
+                            {post.status === "visible"
+                              ? "Published without an automatic check — please look it over."
+                              : post.moderated_by === "human" ? "Held by a moderator." : "Held by the moderation assistant."}
+                          </strong>
                           {post.moderation_reason ? ` ${post.moderation_reason}` : ""}
                         </p>
                         {cats.length > 0 && (
@@ -249,10 +257,10 @@ export default async function ManageCommunityPage({ params }: { params: Promise<
                       </div>
                       <div className={styles.queueActions}>
                         <ActionButton
-                          label="Restore"
+                          label={post.status === "held" ? "Approve and publish" : "Looks fine"}
                           className="btn btn-solid btn-sm"
                           requests={[{ action: "restore", targetType: kind, targetId: post.id }]}
-                          success="Restored — members can see it now."
+                          success={post.status === "held" ? "Published — members can see it now." : "Marked as checked."}
                         />
                         <ActionButton
                           label="Remove"

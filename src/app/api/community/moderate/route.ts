@@ -116,6 +116,15 @@ export async function POST(req: Request) {
   } else {
     if (!(await canModerate(post.community_id))) return fail(403, NOT_MODERATOR);
 
+    // Appeals go to a different manager or an admin: managers can't approve
+    // or re-hold their own posts (which would skip the moderation hold).
+    if ((action === "restore" || action === "hold") && post.author_id === user.id) {
+      const { data: callerIsAdmin } = await supabase.rpc("is_admin");
+      if (callerIsAdmin !== true) {
+        return fail(403, "Another community manager or an admin needs to review your own post.");
+      }
+    }
+
     if ((action === "restore" || action === "hold") && post.status === "removed") {
       // Respect an author's own deletion: managers can't bring it back.
       const { data: deleted } = await admin

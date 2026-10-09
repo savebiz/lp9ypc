@@ -63,8 +63,17 @@ export function isNew(dateStr: string): boolean {
 
 /** Only allow same-site relative paths as post-login destinations (no open redirects). */
 export function safeNextPath(next: string | null | undefined, fallback = "/dashboard"): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) return fallback;
-  return next;
+  // Control characters and backslashes are stripped or normalised by URL
+  // parsers ("/\t/evil.example" becomes "//evil.example"), so reject them, then
+  // resolve against a dummy origin and keep only same-origin paths.
+  if (!next || !next.startsWith("/") || /[\u0000-\u001f\u007f\\]/.test(next)) return fallback;
+  try {
+    const u = new URL(next, "https://x.invalid");
+    if (u.origin !== "https://x.invalid") return fallback;
+    return u.pathname + u.search + u.hash;
+  } catch {
+    return fallback;
+  }
 }
 
 /** Returns the URL only if it is a real web link — never javascript:, data:, etc. */

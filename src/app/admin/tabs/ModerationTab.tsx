@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { categoryLabel } from "@/components/community/PostBits";
 import { Check, Loader2, RotateCcw, Trash2, X } from "lucide-react";
 import type { Community, PostStatus, Profile, Reply, Report, Thread } from "@/types";
 import { formatDateTime, memberNames, postJson, type TabActions } from "./shared";
@@ -47,9 +48,9 @@ export default function ModerationTab({
     return true;
   }
 
-  async function restore(type: "thread" | "reply", id: string) {
+  async function restore(type: "thread" | "reply", id: string, wasHeld: boolean) {
     if (await moderate(id, { action: "restore", targetType: type, targetId: id })) {
-      onSuccess("Restored — members can see the post again.");
+      onSuccess(wasHeld ? "Published — members can see the post now." : "Marked as checked.");
       onChanged();
     }
   }
@@ -98,9 +99,10 @@ export default function ModerationTab({
     <div className="stack-lg">
       <section className="stack" aria-labelledby="held-h">
         <div>
-          <h2 id="held-h" className="title-sm">Posts held for review ({held.length})</h2>
+          <h2 id="held-h" className="title-sm">Posts needing review ({held.length})</h2>
           <p className="small muted" style={{ marginTop: 4 }}>
-            Posts our moderation assistant or a manager held back. Restore makes a post visible; Remove hides it for good.
+            Posts our moderation assistant or a manager held back, and posts published while the automatic check
+            was unavailable. Approve to publish, or Remove to hide for good.
           </p>
         </div>
         {held.length === 0 ? (
@@ -114,19 +116,22 @@ export default function ModerationTab({
                   <div className="row-wrap" style={{ gap: 8, marginBottom: 6 }}>
                     <span className="status off">{type === "thread" ? "Discussion" : "Reply"}</span>
                     <span className="small muted">
-                      {post.moderated_by === "agent" ? "Held by the moderation assistant" : post.moderated_by === "human" ? "Held by a moderator" : "Held"}
+                      {post.status === "visible"
+                        ? "Published without an automatic check"
+                        : post.moderated_by === "agent" ? "Held by the moderation assistant" : post.moderated_by === "human" ? "Held by a moderator" : "Held"}
                     </span>
                   </div>
                   {postSummary(type, post)}
                   {(post.moderation_reason || post.moderation_categories.length > 0) && (
                     <p className="small ink-2" style={{ marginTop: 6 }}>
                       <strong>Why:</strong> {post.moderation_reason || "No reason given"}
-                      {post.moderation_categories.length > 0 && ` (${post.moderation_categories.join(", ")})`}
+                      {post.moderation_categories.length > 0 && ` (${post.moderation_categories.map(categoryLabel).join(", ")})`}
                     </p>
                   )}
                   <div className="row-wrap" style={{ marginTop: 12 }}>
-                    <button type="button" className="btn btn-solid btn-sm" onClick={() => restore(type, post.id)} disabled={!!busy}>
-                      {isBusy ? <Loader2 size={16} className="spin" aria-hidden="true" /> : <RotateCcw size={16} aria-hidden="true" />} Restore
+                    <button type="button" className="btn btn-solid btn-sm" onClick={() => restore(type, post.id, post.status === "held")} disabled={!!busy}>
+                      {isBusy ? <Loader2 size={16} className="spin" aria-hidden="true" /> : <RotateCcw size={16} aria-hidden="true" />}{" "}
+                      {post.status === "held" ? "Approve and publish" : "Looks fine"}
                     </button>
                     <button type="button" className={`btn btn-ghost btn-sm ${styles.dangerGhost}`} onClick={() => remove(type, post.id)} disabled={!!busy}>
                       <Trash2 size={16} aria-hidden="true" /> Remove
@@ -169,10 +174,10 @@ export default function ModerationTab({
                       </button>
                     )}
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => closeReport(r, "report_dismiss")} disabled={!!busy}>
-                      <X size={16} aria-hidden="true" /> Dismiss report
+                      <X size={16} aria-hidden="true" /> Post is fine, close report
                     </button>
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => closeReport(r, "report_resolve")} disabled={!!busy}>
-                      <Check size={16} aria-hidden="true" /> Mark resolved
+                      <Check size={16} aria-hidden="true" /> Handled, close report
                     </button>
                   </div>
                 </article>

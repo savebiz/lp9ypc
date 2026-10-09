@@ -86,24 +86,8 @@ $$;
 
 grant update (career_goal) on table public.profiles to authenticated;
 
--- Public-safe author names for discussion posts: first name + last initial.
--- Runs with the view owner's rights (so it can read profiles despite RLS) and
--- exposes ONLY id + display_name, to signed-in members only.
-create or replace view public.member_directory as
-select
-  p.id,
-  coalesce(
-    nullif(
-      case when array_length(x.parts, 1) > 1
-           then x.parts[1] || ' ' || left(x.parts[array_length(x.parts, 1)], 1) || '.'
-           else x.parts[1] end,
-      ''),
-    'Member') as display_name
-from public.profiles p
-cross join lateral (select regexp_split_to_array(trim(p.full_name), '\s+') as parts) x;
-
-revoke all on public.member_directory from public, anon, authenticated;
-grant select on public.member_directory to authenticated;
+-- (member_directory - public-safe author names - is created in section 6,
+-- after the community tables it depends on.)
 
 
 -- ----------------------------------------------------------------------------
@@ -429,6 +413,100 @@ where c.is_active;
 revoke all on public.community_overview from public, anon, authenticated;
 grant select on public.community_overview to anon, authenticated;
 
+-- Public-safe author names: first name + last initial, never other profile
+-- fields. Runs with the view owner's rights so it can read profiles despite
+-- RLS, but only lists people the viewer has a reason to see: themselves,
+-- community managers, authors of visible posts, and - for moderators - the
+-- authors and reporters in communities they moderate.
+create or replace view public.member_directory as
+select
+  p.id,
+  coalesce(
+    nullif(
+      case when array_length(x.parts, 1) > 1
+           then x.parts[1] || ' ' || left(x.parts[array_length(x.parts, 1)], 1) || '.'
+           else x.parts[1] end,
+      ''),
+    'Member') as display_name
+from public.profiles p
+cross join lateral (select regexp_split_to_array(trim(p.full_name), '\s+') as parts) x
+where p.id = (select auth.uid())
+   or exists (select 1 from public.community_members m where m.member_id = p.id and m.role = 'manager')
+   or exists (select 1 from public.threads t where t.author_id = p.id
+                and (t.status = 'visible' or public.can_moderate(t.community_id)))
+   or exists (select 1 from public.replies r where r.author_id = p.id
+                and (r.status = 'visible' or public.can_moderate(r.community_id)))
+   or exists (select 1 from public.reports rp where rp.reporter_id = p.id and public.can_moderate(rp.community_id));
+
+revoke all on public.member_directory from public, anon, authenticated;
+grant select on public.member_directory to authenticated;
+
+-- Moderation notes (reason, categories, who decided) are hidden from members
+-- by column grants (section 8). Moderators read them through this function,
+-- which returns rows only for communities the caller can moderate.
+create or replace function public.post_moderation_notes(p_kind text, p_ids uuid[])
+returns table (id uuid, moderation_reason text, moderation_categories text[], moderated_by text)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select t.id, t.moderation_reason, t.moderation_categories, t.moderated_by
+    from public.threads t
+   where p_kind = 'thread' and t.id = any (p_ids) and public.can_moderate(t.community_id)
+  union all
+  select r.id, r.moderation_reason, r.moderation_categories, r.moderated_by
+    from public.replies r
+   where p_kind = 'reply' and r.id = any (p_ids) and public.can_moderate(r.community_id);
+$$;
+revoke execute on function public.post_moderation_notes(text, uuid[]) from public, anon;
+grant execute on function public.post_moderation_notes(text, uuid[]) to authenticated;
+
+-- Atomic posting slot (rate limit without a race): takes a per-author lock,
+-- counts the author's posts in the window, and inserts the new post as
+-- 'pending' only if they're under the limit. Returns the new id, or null when
+-- rate-limited. Called ONLY by server routes with the service role, after
+-- they've authorised the caller; members can't execute it.
+create or replace function public.claim_post_slot(
+  p_author uuid,
+  p_community uuid,
+  p_thread uuid,
+  p_title text,
+  p_body text,
+  p_limit integer default 10,
+  p_window interval default interval '10 minutes'
+)
+returns uuid
+language plpgsql
+set search_path = ''
+as $$
+declare
+  recent integer;
+  new_id uuid;
+begin
+  perform pg_advisory_xact_lock(hashtextextended(p_author::text, 0));
+  select (select count(*) from public.threads where author_id = p_author and created_at > now() - p_window)
+       + (select count(*) from public.replies where author_id = p_author and created_at > now() - p_window)
+    into recent;
+  if recent >= p_limit then
+    return null;
+  end if;
+  if p_thread is null then
+    insert into public.threads (community_id, author_id, title, body, status)
+    values (p_community, p_author, p_title, p_body, 'pending')
+    returning id into new_id;
+  else
+    insert into public.replies (thread_id, community_id, author_id, body, status)
+    values (p_thread, p_community, p_author, p_body, 'pending')
+    returning id into new_id;
+  end if;
+  return new_id;
+end;
+$$;
+revoke execute on function public.claim_post_slot(uuid, uuid, uuid, text, text, integer, interval) from public, anon, authenticated;
+grant execute on function public.claim_post_slot(uuid, uuid, uuid, text, text, integer, interval) to service_role;
+
+
 
 -- ----------------------------------------------------------------------------
 -- 7. Row-level security
@@ -523,7 +601,11 @@ create policy "threads: read visible, own, or as moderator" on public.threads fo
   using (status = 'visible' or author_id = (select auth.uid()) or (select public.can_moderate(community_id)));
 drop policy if exists "replies: read visible, own, or as moderator" on public.replies;
 create policy "replies: read visible, own, or as moderator" on public.replies for select to authenticated
-  using (status = 'visible' or author_id = (select auth.uid()) or (select public.can_moderate(community_id)));
+  using (
+    (status = 'visible' and exists (select 1 from public.threads t where t.id = thread_id and t.status = 'visible'))
+    or author_id = (select auth.uid())
+    or (select public.can_moderate(community_id))
+  );
 
 -- reports: members file their own; moderators of that community review.
 drop policy if exists "reports: file own"                  on public.reports;
@@ -533,8 +615,8 @@ create policy "reports: file own" on public.reports for insert to authenticated
   with check (reporter_id = (select auth.uid()) and status = 'open');
 create policy "reports: read own or as moderator" on public.reports for select to authenticated
   using (reporter_id = (select auth.uid()) or (select public.can_moderate(community_id)));
-create policy "reports: moderators resolve" on public.reports for update to authenticated
-  using ((select public.can_moderate(community_id))) with check ((select public.can_moderate(community_id)));
+-- Reports are resolved only through POST /api/community/moderate (service role),
+-- so every resolution is written to moderation_log. No client update policy.
 
 -- logs: read-only, moderators / admins.
 drop policy if exists "moderation_log: moderators read" on public.moderation_log;
@@ -564,8 +646,17 @@ revoke all on table
 
 -- Read-only to clients (writes are server-side with the service role).
 grant select on table
-  public.profession_research, public.threads, public.replies, public.moderation_log, public.agent_runs
+  public.profession_research, public.moderation_log, public.agent_runs
   to authenticated;
+
+-- Posts: every column EXCEPT the moderation notes (moderation_reason,
+-- moderation_categories, moderated_by). Moderators get those through
+-- post_moderation_notes(); authors never learn which rule held their post.
+grant select (id, community_id, author_id, title, body, status, needs_review,
+              is_pinned, is_locked, reply_count, last_activity_at, created_at, updated_at)
+  on table public.threads to authenticated;
+grant select (id, thread_id, community_id, author_id, body, status, needs_review, created_at, updated_at)
+  on table public.replies to authenticated;
 
 -- Admin-managed tables (RLS limits writes to admins).
 grant select, insert, update, delete on table public.job_sources, public.communities to authenticated;
@@ -585,7 +676,7 @@ grant update (status, reviewed_by, reviewed_at) on table public.career_path_cand
 -- Reports: file (community_id is overwritten by trigger) and resolve.
 grant select on table public.reports to authenticated;
 grant insert (community_id, target_type, target_id, reporter_id, reason) on table public.reports to authenticated;
-grant update (status, resolved_by, resolved_at) on table public.reports to authenticated;
+-- (no client UPDATE on reports - resolution goes through the logged server route)
 
 
 -- ----------------------------------------------------------------------------

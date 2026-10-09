@@ -3,12 +3,20 @@ import Navbar from "@/components/layout/Navbar";
 import AdminClient from "./AdminClient";
 import type { AdminData } from "./tabs/shared";
 import { getSession } from "@/lib/session";
+import { withModerationNotes } from "@/lib/moderation-notes";
 import type {
   AgentRun, Announcement, CareerPath, CareerPathCandidate, Community, CommunityOverview, Job, JobSource,
   Profile, Reply, Report, Thread,
 } from "@/types";
 
 export const metadata = { title: "Admin · LP9 YPC" };
+
+// Moderation notes are hidden from select by column grants; never select "*" on posts.
+const THREAD_COLS = "id, community_id, author_id, title, body, status, needs_review, is_pinned, is_locked, reply_count, last_activity_at, created_at, updated_at";
+const REPLY_COLS = "id, thread_id, community_id, author_id, body, status, needs_review, created_at, updated_at";
+// The review queue: held posts, plus posts published while the automatic check was down.
+const NEEDS_REVIEW = "status.eq.held,and(status.eq.visible,needs_review.eq.true)";
+
 
 export default async function AdminPage() {
   const { supabase, user, isAdmin, userName } = await getSession();
@@ -34,15 +42,17 @@ export default async function AdminPage() {
     supabase.from("communities").select("*").order("name"),
     supabase.from("community_members").select("community_id, member_id, role"),
     supabase.from("community_overview").select("*"),
-    supabase.from("threads").select("*").eq("status", "held").order("created_at", { ascending: true }).limit(100),
-    supabase.from("replies").select("*").eq("status", "held").order("created_at", { ascending: true }).limit(100),
+    supabase.from("threads").select(THREAD_COLS).or(NEEDS_REVIEW).order("created_at", { ascending: true }).limit(100),
+    supabase.from("replies").select(REPLY_COLS).or(NEEDS_REVIEW).order("created_at", { ascending: true }).limit(100),
     supabase.from("reports").select("*").eq("status", "open").order("created_at", { ascending: true }).limit(100),
     supabase.from("career_path_candidates").select("*").eq("status", "pending").order("created_at", { ascending: true }),
     supabase.from("agent_runs").select("*").order("started_at", { ascending: false }).limit(20),
   ]);
 
-  const heldThreads = (heldThreadsRes.data ?? []) as Thread[];
-  const heldReplies = (heldRepliesRes.data ?? []) as Reply[];
+  const [heldThreads, heldReplies] = await Promise.all([
+    withModerationNotes(supabase, "thread", (heldThreadsRes.data ?? []) as Thread[]),
+    withModerationNotes(supabase, "reply", (heldRepliesRes.data ?? []) as Reply[]),
+  ]);
   const openReports = (reportsRes.data ?? []) as Report[];
 
   // Context for the moderation queue: the discussion each held reply belongs
@@ -53,14 +63,14 @@ export default async function AdminPage() {
   ]);
   const replyIds = new Set(openReports.filter((r) => r.target_type === "reply").map((r) => r.target_id));
   const [relThreadsRes, relRepliesRes] = await Promise.all([
-    threadIds.size ? supabase.from("threads").select("*").in("id", [...threadIds]) : Promise.resolve({ data: [], error: null }),
-    replyIds.size ? supabase.from("replies").select("*").in("id", [...replyIds]) : Promise.resolve({ data: [], error: null }),
+    threadIds.size ? supabase.from("threads").select(THREAD_COLS).in("id", [...threadIds]) : Promise.resolve({ data: [], error: null }),
+    replyIds.size ? supabase.from("replies").select(REPLY_COLS).in("id", [...replyIds]) : Promise.resolve({ data: [], error: null }),
   ]);
   const relatedReplies = (relRepliesRes.data ?? []) as Reply[];
   // Reported replies need their discussion's title too.
   const missingThreadIds = relatedReplies.map((r) => r.thread_id).filter((id) => !threadIds.has(id));
   const extraThreadsRes = missingThreadIds.length
-    ? await supabase.from("threads").select("*").in("id", [...new Set(missingThreadIds)])
+    ? await supabase.from("threads").select(THREAD_COLS).in("id", [...new Set(missingThreadIds)])
     : { data: [], error: null };
 
   const loadError = [jobsRes, membersRes, pathsRes, annRes, linksRes].some((r) => r.error);
@@ -100,13 +110,13 @@ export default async function AdminPage() {
         </div>
         {loadError && (
           <div className="alert alert-error" role="alert" style={{ marginBottom: 16 }}>
-            Some data didn&apos;t load. Refresh the page; if it keeps happening, check the Supabase project is running.
+            Some data didn&apos;t load. Refresh the page; if it keeps happening, tell the tech team.
           </div>
         )}
         {!loadError && phase2Error && (
           <div className="alert alert-info" role="status" style={{ marginBottom: 16 }}>
             Some newer sections (job sources, review queue, communities, moderation, career ideas or agents) couldn&apos;t load.
-            If the latest database update hasn&apos;t been applied yet, that&apos;s expected — ask the tech lead.
+            If the latest update hasn&apos;t been installed yet, that&apos;s expected — tell the tech team.
           </div>
         )}
         <AdminClient data={data} />

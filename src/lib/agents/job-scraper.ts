@@ -247,6 +247,12 @@ export async function runJobSource(
   opts: { deadline?: number; catalogue?: CareerPathRow[] } = {},
 ): Promise<JobSourceRunResult> {
   let result: JobSourceRunResult;
+  // Mark the attempt first: if this run is cut off, the source still moves to
+  // the back of the queue instead of blocking the others every day.
+  await admin
+    .from("job_sources")
+    .update({ last_run_at: new Date().toISOString(), last_status: "error", last_error: "Run started but did not finish." })
+    .eq("id", source.id);
   try {
     result = await scrape(admin, source, opts.deadline ?? Date.now() + 55_000, opts.catalogue);
   } catch {

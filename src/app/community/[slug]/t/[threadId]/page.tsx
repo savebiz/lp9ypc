@@ -21,6 +21,7 @@ import { plural } from "@/components/community/time";
 import styles from "@/components/community/community.module.css";
 import { getSession } from "@/lib/session";
 import { REPLY_COLUMNS, displayNames, isUuid, loadCommunity, loadThread, nameOf, viewerRole } from "../../../_lib/data";
+import { NO_NOTES, fetchModerationNotes, type ModerationNotes } from "@/lib/moderation-notes";
 import type { PostStatus, Reply, Thread } from "@/types";
 
 type Params = Promise<{ slug: string; threadId: string }>;
@@ -135,6 +136,15 @@ export default async function ThreadPage({ params }: { params: Params }) {
   );
 
   const postIds = [thread.id, ...replies.map((r) => r.id)];
+  // Moderation notes are hidden from members; moderators fetch them separately.
+  const notes = new Map<string, ModerationNotes>();
+  if (canModerate) {
+    const [threadNotes, replyNotes] = await Promise.all([
+      fetchModerationNotes(supabase, "thread", [thread.id]),
+      fetchModerationNotes(supabase, "reply", replies.map((r) => r.id)),
+    ]);
+    for (const [k, v] of [...threadNotes, ...replyNotes]) notes.set(k, v);
+  }
   const [names, myReportsRes] = await Promise.all([
     displayNames(supabase, [thread.author_id, ...replies.map((r) => r.author_id)]),
     supabase.from("reports").select("target_id").eq("reporter_id", user.id).in("target_id", postIds),
@@ -148,7 +158,7 @@ export default async function ThreadPage({ params }: { params: Params }) {
   const canReply = isMember && (threadOpen || canModerate) && (!thread.is_locked || canModerate);
 
   const note = (post: Thread | Reply, kind: "thread" | "reply", own: boolean) =>
-    canModerate ? <ModerationNote post={post} /> : own ? <AuthorNote status={post.status} kind={kind} /> : null;
+    canModerate ? <ModerationNote post={{ ...post, ...(notes.get(post.id) ?? NO_NOTES) }} /> : own ? <AuthorNote status={post.status} kind={kind} /> : null;
 
   return shell(
     <>

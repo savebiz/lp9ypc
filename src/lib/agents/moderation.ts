@@ -95,6 +95,15 @@ export function parseModerationOutput(data: unknown): Omit<ModerationResult, "so
   return { decision: "allow", categories: [], reason };
 }
 
+function cantRead(): ModerationResult {
+  return {
+    decision: "hold",
+    categories: ["other"],
+    reason: "The automatic check couldn't read this post, so a manager needs to look at it.",
+    source: "agent",
+  };
+}
+
 function unavailable(why: string): ModerationResult {
   return { decision: "allow", categories: [], reason: `Automatic check unavailable (${why}).`, source: "unavailable" };
 }
@@ -134,11 +143,15 @@ export async function moderatePostDetailed(input: ModerationInput): Promise<Mode
         usage,
       };
     }
+    // Failures that depend on the post itself (an over-long or unreadable
+    // answer) must not become a way to skip the check: hold for a human.
+    // Only outages (no key, network/HTTP error, timeout) fail open.
+    if (res.reason === "max_tokens" || res.reason === "bad_json") return { ...cantRead(), usage };
     return { ...unavailable(res.reason.replace("_", " ")), usage };
   }
 
   const parsed = parseModerationOutput(res.data);
-  if (!parsed) return { ...unavailable("unusable answer"), usage: res.usage };
+  if (!parsed) return { ...cantRead(), usage: res.usage };
   return { ...parsed, source: "agent", usage: res.usage };
 }
 

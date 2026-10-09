@@ -3,7 +3,7 @@
 -- ============================================================================
 -- Run in the Supabase SQL Editor after BOTH migrations (initial schema +
 -- community_agents).
--- Every row should show ok = true. If any row says false, stop and send the
+-- 27 checks. Every row should show ok = true. If any row says false, stop and send the
 -- result over before going further.
 -- ============================================================================
 
@@ -30,8 +30,8 @@ select '04. signup trigger is installed on auth.users',
                   and tgrelid = 'auth.users'::regclass
                   and not tgisinternal)
 union all
-select '05. all 45 security policies are installed (20 + 25 from migration 2)',
-       (select count(*) = 45 from pg_policies where schemaname = 'public')
+select '05. all 44 security policies are installed (20 + 24 from migration 2)',
+       (select count(*) = 44 from pg_policies where schemaname = 'public')
 union all
 select '06. members CANNOT change their own role (blocks self-promotion to admin)',
        not has_column_privilege('authenticated', 'public.profiles', 'role', 'UPDATE')
@@ -105,4 +105,16 @@ select '23. jobs have a review queue for scraped listings (review_status column)
 union all
 select '24. report community is set server-side (trigger installed)',
        exists (select 1 from pg_trigger where tgname = 'reports_set_community' and not tgisinternal)
+union all
+select '25. members CANNOT read moderation notes on posts (moderators use post_moderation_notes)',
+       not has_column_privilege('authenticated', 'public.threads', 'moderation_reason', 'SELECT')
+       and not has_column_privilege('authenticated', 'public.replies', 'moderation_categories', 'SELECT')
+       and has_column_privilege('authenticated', 'public.threads', 'title', 'SELECT')
+union all
+select '26. reports can only be resolved through the logged server route',
+       not has_table_privilege('authenticated', 'public.reports', 'UPDATE')
+union all
+select '27. only the server can claim posting slots (atomic rate limit)',
+       not has_function_privilege('authenticated', 'public.claim_post_slot(uuid, uuid, uuid, text, text, integer, interval)', 'EXECUTE')
+       and has_function_privilege('authenticated', 'public.post_moderation_notes(text, uuid[])', 'EXECUTE')
 order by 1;

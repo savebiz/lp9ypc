@@ -21,6 +21,9 @@ export const MAX_POSTS_PER_SWEEP = 25;
 const PENDING_GRACE_MS = 5 * 60 * 1000;
 const CONCURRENCY = 5;
 
+/** Published-but-unchecked posts are held for a human after this long. */
+const UNCHECKED_HOLD_AFTER_MS = 24 * 60 * 60 * 1000;
+
 interface SweepPost {
   kind: "thread" | "reply";
   id: string;
@@ -106,12 +109,25 @@ export async function runModerationSweep(admin: SupabaseClient, opts: { deadline
       let update: Record<string, unknown>;
       let action: "allow" | "hold" | "flag";
       if (result.source === "unavailable") {
-        if (post.status !== "pending") {
+        const ageMs = Date.now() - new Date(post.created_at).getTime();
+        if (post.status !== "pending" && ageMs < UNCHECKED_HOLD_AFTER_MS) {
           counts.unavailable++;
           return;
         }
-        update = { status: "visible", needs_review: true };
-        action = "flag";
+        if (post.status !== "pending") {
+          // Still unchecked after a day: stop showing it until a human looks.
+          update = {
+            status: "held",
+            needs_review: false,
+            moderated_by: "agent",
+            moderation_reason: "Couldn't be checked automatically for over a day, so it's waiting for a manager.",
+            moderation_categories: ["other"],
+          };
+          action = "hold";
+        } else {
+          update = { status: "visible", needs_review: true };
+          action = "flag";
+        }
       } else if (result.decision === "hold") {
         update = {
           status: "held",

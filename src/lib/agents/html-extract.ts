@@ -113,7 +113,9 @@ export function extractPage(html: string, pageUrl: string): ExtractedPage {
     return links.length - 1;
   };
 
-  s = s.replace(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi, (_m, attrs: string, inner: string) => {
+  // The inner match is bounded so a page full of unclosed <a> tags can't make
+  // this quadratic (a hostile 2 MB page would otherwise outlive the cron).
+  s = s.replace(/<a\b([^>]{0,2000})>([\s\S]{0,4000}?)<\/a\s*>/gi, (_m, attrs: string, inner: string) => {
     const idx = addLink(readAttr(attrs, "href"));
     return idx >= 0 ? ` ${inner} \u0000${idx}\u0000 ` : ` ${inner} `;
   });
