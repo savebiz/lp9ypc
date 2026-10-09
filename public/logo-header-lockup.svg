@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 80" width="100%" height="100%">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F7D070" />
+      <stop offset="50%" stop-color="#C59B27" />
+      <stop offset="100%" stop-color="#9A7410" />
+    </linearGradient>
+    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1B4980" />
+      <stop offset="100%" stop-color="#0B2545" />
+    </linearGradient>
+    <linearGradient id="greenGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00875A" />
+      <stop offset="100%" stop-color="#10B981" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.15" />
+    </filter>
+  </defs>
+
+  <!-- YAYA CREST SYMBOL (LEFT) -->
+  <g transform="translate(10, 4)">
+    <!-- Golden Crown Top -->
+    <path d="M 28 8 C 24 14, 20 12, 16 16 C 22 18, 34 18, 40 16 C 36 12, 32 14, 28 8 Z" fill="url(#goldGrad)" />
+    <circle cx="28" cy="7" r="2.5" fill="#1E40AF" />
+    <path d="M 18 16 L 20 22 L 36 22 L 38 16 L 33 19 L 28 15 L 23 19 Z" fill="url(#goldGrad)" />
+    
+    <!-- Wheat / Laurel Wreath Surround -->
+    <path d="M 10 28 C 4 38, 6 54, 16 64 C 12 60, 10 46, 16 34 Z" fill="url(#goldGrad)" />
+    <path d="M 46 28 C 52 38, 50 54, 40 64 C 44 60, 46 46, 40 34 Z" fill="url(#goldGrad)" />
+
+    <!-- Outer Red Ring -->
+    <circle cx="28" cy="44" r="23" fill="none" stroke="#DC2626" stroke-width="1.8" />
+    <circle cx="28" cy="44" r="21" fill="#FFFFFF" stroke="#00875A" stroke-width="1.2" />
+
+    <!-- Inner Blue Quadrant Shield -->
+    <circle cx="28" cy="44" r="15" fill="url(#blueGrad)" />
+    <!-- White Cross Lines -->
+    <line x1="28" y1="29" x2="28" y2="59" stroke="#FFFFFF" stroke-width="1.2" />
+    <line x1="13" y1="44" x2="43" y2="44" stroke="#FFFFFF" stroke-width="1.2" />
+
+    <!-- Quadrant Icons (Simplified Vector representations) -->
+    <!-- Top-Left: Dove -->
+    <path d="M 20 37 C 22 35, 25 36, 24 39 C 22 39, 21 38, 20 37 Z" fill="#FFFFFF" />
+    <!-- Top-Right: Praying Hands -->
+    <path d="M 33 36 C 34 34, 35 34, 35 38 L 33 40 Z" fill="#FFFFFF" />
+    <!-- Bottom-Left: Open Bible -->
+    <path d="M 19 49 Q 22 47 25 49 L 25 51 Q 22 49 19 51 Z" fill="#FFFFFF" />
+    <!-- Bottom-Right: Sword -->
+    <line x1="33" y1="52" x2="37" y2="47" stroke="#FFFFFF" stroke-width="1.2" stroke-linecap="round" />
+
+    <!-- Bottom Ribbon Banner: R.C.C.G -->
+    <path d="M 14 65 Q 28 70 42 65 L 40 71 Q 28 75 16 71 Z" fill="url(#goldGrad)" />
+    <text x="28" y="70" font-family="'Inter', sans-serif" font-size="5" font-weight="900" fill="#00875A" text-anchor="middle">R.C.C.G</text>
+  </g>
+
+  <!-- ELEGANT DIVIDER LINE -->
+  <line x1="72" y1="15" x2="72" y2="65" stroke="url(#goldGrad)" stroke-width="1.5" stroke-linecap="round" />
+
+  <!-- LP9 YPC MODERN LOGO MARK & TYPOGRAPHY (RIGHT) -->
+  <g transform="translate(86, 0)">
+    <!-- YPC Ascending Node Emblem -->
+    <g transform="translate(0, 16)">
+      <!-- Stylized Ascending Arrow & Y9 Mark -->
+      <path d="M 0 36 L 14 12 L 28 36 L 20 36 L 14 24 L 8 36 Z" fill="url(#blueGrad)" />
+      <path d="M 14 12 L 28 12 L 36 26 L 28 40 L 22 40 L 28 30 L 22 20 L 14 20 Z" fill="url(#greenGrad)" />
+      <circle cx="28" cy="12" r="3.5" fill="#F4B400" />
+      <circle cx="14" cy="12" r="3" fill="#00A8E8" />
+    </g>
+
+    <!-- Text Group -->
+    <g transform="translate(46, 0)">
+      <!-- LP9 YPC Main Title -->
+      <text x="0" y="42" font-family="'Inter', 'Outfit', sans-serif" font-size="28" font-weight="900" letter-spacing="-0.5">
+        <tspan fill="#0B2545">LP9</tspan>
+        <tspan fill="#00875A" dx="5">YPC</tspan>
+      </text>
+      
+      <!-- Subtitle Tagline -->
+      <text x="0" y="58" font-family="'Inter', sans-serif" font-size="9.5" font-weight="700" fill="#4B5563" letter-spacing="1.2">
+        LAGOS PROVINCE 9 <tspan fill="#C59B27">•</tspan> YOUNG PROFESSIONALS CLUB
+      </text>
+    </g>
+  </g>
+</svg>

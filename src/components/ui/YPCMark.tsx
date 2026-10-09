@@ -1,3 +1,21 @@
+import Image from "next/image";
+
+/** Official RCCG YAYA Crest Logo */
+export function YAYACrest({ size = 38 }: { size?: number }) {
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+      <Image
+        src="/yaya-crest.png"
+        alt="RCCG Young Adults & Youths logo"
+        width={size}
+        height={size}
+        style={{ objectFit: "contain", height: size, width: "auto" }}
+        priority
+      />
+    </div>
+  );
+}
+
 /** The YPC connection mark: three joined dots. The only illustrative motif. */
 export function FigureMark({ size = 40, color = "var(--blue)" }: { size?: number; color?: string }) {
   return (
@@ -12,6 +30,23 @@ export function FigureMark({ size = 40, color = "var(--blue)" }: { size?: number
   );
 }
 
+/** Co-branded logo combining RCCG YAYA Crest with LP9 YPC logo mark */
+export function CoBrandedLogo({ crestSize = 36, markSize = 32 }: { crestSize?: number; markSize?: number }) {
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: "10px" }}>
+      <YAYACrest size={crestSize} />
+      <span style={{ width: 1, height: crestSize * 0.75, backgroundColor: "var(--border, #E5E7EB)", display: "inline-block" }} />
+      <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+        <FigureMark size={markSize} />
+        <span className="logo-text">
+          YPC
+          <small>LAGOS PROVINCE 9</small>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /** Desktop-only hero decoration: a dot grid with a large crop of the mark. Pure SVG/CSS, no image requests. */
 export function HeroArt() {
   return (
@@ -23,3 +58,4 @@ export function HeroArt() {
     </div>
   );
 }
+

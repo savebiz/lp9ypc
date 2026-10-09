@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FigureMark } from "@/components/ui/YPCMark";
+import { YAYACrest, FigureMark } from "@/components/ui/YPCMark";
 import { MISSION, SITE } from "@/content/site";
 
 export default function Footer() {
@@ -8,9 +8,11 @@ export default function Footer() {
       <div className="wrap">
         <div className="foot-grid">
           <div>
-            <div className="row" style={{ color: "#fff", marginBottom: 12 }}>
-              <FigureMark size={30} color="var(--citrus)" />
-              <span style={{ fontFamily: "var(--display)", fontWeight: 700, fontSize: 18 }}>LP9 YPC</span>
+            <div className="row" style={{ color: "#fff", marginBottom: 16, gap: 12, alignItems: "center" }}>
+              <YAYACrest size={34} />
+              <span style={{ width: 1, height: 24, backgroundColor: "rgba(255,255,255,0.2)" }} />
+              <FigureMark size={28} color="var(--citrus)" />
+              <span style={{ fontFamily: "var(--display)", fontWeight: 700, fontSize: 18, color: "#fff" }}>LP9 YPC</span>
             </div>
             <p style={{ maxWidth: "38ch" }}>{MISSION}</p>
           </div>

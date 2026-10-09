@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { LogOut, Menu, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { FigureMark } from "@/components/ui/YPCMark";
+import { CoBrandedLogo } from "@/components/ui/YPCMark";
 import { firstName } from "@/lib/utils";
 
 interface NavbarProps {
@@ -17,11 +17,7 @@ interface NavbarProps {
 export function Logo() {
   return (
     <Link href="/" className="logo" aria-label="LP9 YPC home">
-      <FigureMark size={34} />
-      <span className="logo-text">
-        YPC
-        <small>LAGOS PROVINCE 9</small>
-      </span>
+      <CoBrandedLogo crestSize={34} markSize={28} />
     </Link>
   );
 }
