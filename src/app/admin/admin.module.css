@@ -1,15 +1,14 @@
 /* Admin backend — additions on top of the Calm Kinetic admin classes in globals.css. */
 
-/* Ten tabs: the bar scrolls sideways on small screens instead of squashing. */
-.tabs {
-  scroll-snap-type: x proximity;
-  scrollbar-width: thin;
-  overscroll-behavior-x: contain;
-  -webkit-overflow-scrolling: touch;
+/* Ten tabs. On phones they wrap into a two-column grid so every section is
+   visible (a sideways-scrolling bar hides most of them, especially on iOS). */
+@media (max-width: 699px) {
+  .tabs { flex-wrap: wrap; overflow: visible; border-radius: var(--r-card); }
+  .tabs > button[role="tab"] { flex: 1 1 calc(50% - 4px); white-space: normal; min-height: 44px; line-height: 1.25; }
 }
-.tabs > button[role="tab"] {
-  flex: 0 0 auto;
-  scroll-snap-align: start;
+@media (min-width: 700px) {
+  .tabs { scroll-snap-type: x proximity; scrollbar-width: thin; overscroll-behavior-x: contain; }
+  .tabs > button[role="tab"] { flex: 0 0 auto; scroll-snap-align: start; }
 }
 @media (min-width: 1100px) {
   .tabs > button[role="tab"] { flex: 1 0 auto; }

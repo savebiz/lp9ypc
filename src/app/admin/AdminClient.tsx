@@ -69,9 +69,9 @@ export default function AdminClient({ data }: { data: AdminData }) {
     { key: "members", label: `Members (${members.length})` },
     { key: "communities", label: "Communities" },
     { key: "moderation", label: `Moderation (${moderationCount})` },
-    { key: "ideas", label: `Career path ideas (${data.candidates.length})` },
-    { key: "agents", label: "Agents" },
     { key: "announcements", label: `News & events (${data.announcements.length})` },
+    { key: "ideas", label: `Career path ideas (${data.candidates.length})` },
+    { key: "agents", label: "Assistants set-up" },
   ];
 
   function select(t: Tab, focus = false) {

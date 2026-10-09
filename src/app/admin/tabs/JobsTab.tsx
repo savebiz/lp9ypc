@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import styles from "../admin.module.css";
 import Link from "next/link";
 import { Archive, ArchiveRestore, ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -98,12 +99,12 @@ export default function JobsTab({ jobs, careerPaths, jobSources, adminId, onErro
                   )}
                 </div>
                 <div className="actions">
-                  <Link href={`/jobs/${j.id}`} className="icon-btn" aria-label={`View ${j.title}`} title="View"><ExternalLink size={18} /></Link>
-                  <button className="icon-btn" onClick={() => openEdit(j)} aria-label={`Edit ${j.title}`} title="Edit"><Pencil size={18} /></button>
-                  <button className="icon-btn" onClick={() => toggleActive(j)} aria-label={`${j.is_active ? "Archive" : "Restore"} ${j.title}`} title={j.is_active ? "Archive" : "Restore"}>
-                    {j.is_active ? <Archive size={18} /> : <ArchiveRestore size={18} />}
+                  <Link href={`/jobs/${j.id}`} className="btn btn-ghost btn-sm" aria-label={`View ${j.title}`}><ExternalLink size={16} aria-hidden="true" /> View</Link>
+                  <button className="btn btn-ghost btn-sm" onClick={() => openEdit(j)} aria-label={`Edit ${j.title}`}><Pencil size={16} aria-hidden="true" /> Edit</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => toggleActive(j)} aria-label={`${j.is_active ? "Archive (hide)" : "Restore"} ${j.title}`}>
+                    {j.is_active ? <Archive size={16} aria-hidden="true" /> : <ArchiveRestore size={16} aria-hidden="true" />} {j.is_active ? "Archive" : "Restore"}
                   </button>
-                  <button className="icon-btn danger" onClick={() => remove(j)} aria-label={`Delete ${j.title}`} title="Delete"><Trash2 size={18} /></button>
+                  <button className={`btn btn-ghost btn-sm ${styles.dangerGhost}`} onClick={() => remove(j)} aria-label={`Delete ${j.title}`}><Trash2 size={16} aria-hidden="true" /> Delete</button>
                 </div>
               </div>
             );

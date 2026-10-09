@@ -88,13 +88,13 @@ export default function CareerSuggestions({ userId, suggestions, fallback = [], 
     showToast("Suggestion hidden");
   }
 
-  const title = variant === "switch" ? "Thinking of switching?" : "Suggested career paths";
+  const title = variant === "switch" ? "Paths to explore" : "Suggested career paths";
   const intro =
     variant === "switch"
-      ? "Paths people with your background often move into, from our career research."
+      ? "Suggested by our career assistant, which looks up your profession online. Check the sources before you decide."
       : usingFallback
         ? "Based on your profession."
-        : "From our career research, based on your profession.";
+        : "Suggested by our career assistant, which looks up your profession online.";
 
   return (
     <section className="panel" aria-labelledby={headingId}>
@@ -113,7 +113,7 @@ export default function CareerSuggestions({ userId, suggestions, fallback = [], 
       {items.length === 0 ? (
         <p className="ink-2">
           {variant === "switch"
-            ? "Suggestions for paths you could move into will appear here once they're ready. Meanwhile, you can pick paths yourself on your profile."
+            ? "No suggestions yet. You can pick any career path yourself on your profile."
             : "You're all caught up. You can change your career paths anytime on your profile."}
         </p>
       ) : (
@@ -163,7 +163,7 @@ export default function CareerSuggestions({ userId, suggestions, fallback = [], 
         </ul>
       )}
 
-      {toast && <div className="toast" role="status">{toast}</div>}
+      <div role="status" aria-live="polite">{toast && <div className="toast">{toast}</div>}</div>
     </section>
   );
 }

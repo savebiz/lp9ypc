@@ -58,6 +58,8 @@ export default function RegisterPage() {
   });
   const [errors, setErrors] = useState<Errors>({});
   const [showPw, setShowPw] = useState(false);
+  // "Not sure yet" tucks the path list away until the member asks for it.
+  const [pickAnyway, setPickAnyway] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState("");
   const [checkEmail, setCheckEmail] = useState(false);
@@ -291,7 +293,7 @@ export default function RegisterPage() {
         {step === 2 && (
           <>
             <h1 ref={headingRef} tabIndex={-1} className="title-lg">Your career paths.</h1>
-            <p className="lede" style={{ margin: "8px 0 24px" }}>Pick one or more. You can change these anytime.</p>
+            <p className="lede" style={{ margin: "8px 0 24px" }}>Tell us what you&apos;re after. You can change all of this anytime.</p>
 
             <fieldset className={styles.goal}>
               <legend className="label" id="l-careerGoal">
@@ -312,9 +314,14 @@ export default function RegisterPage() {
               )}
             </fieldset>
 
+            {form.careerGoal === "explore" && !pickAnyway ? (
+              <button type="button" className="btn btn-ghost" onClick={() => setPickAnyway(true)} aria-expanded={false}>
+                Or pick some now
+              </button>
+            ) : (
             <fieldset className={styles.paths} aria-describedby={errors.paths ? "e-paths" : undefined}>
-              <legend className="sr-only" id="f-paths" tabIndex={-1}>
-                Career paths{form.careerGoal === "explore" ? " (optional)" : ""}
+              <legend className={`label ${styles.pathsLegend}`} id="f-paths" tabIndex={-1}>
+                Pick one or more career paths{form.careerGoal === "explore" && <> <span className="opt">(optional)</span></>}
               </legend>
               {pathsState === "loading" && <p className="row muted"><Loader2 size={18} className="spin" aria-hidden="true" /> Loading career paths…</p>}
               {pathsState === "error" && (
@@ -322,7 +329,7 @@ export default function RegisterPage() {
                   <CircleAlert size={18} aria-hidden="true" />
                   <span>
                     We couldn&apos;t load the career paths.{" "}
-                    <button type="button" className="btn-link" style={{ minHeight: 0, color: "inherit" }} onClick={loadPaths}>Try again</button>
+                    <button type="button" className="btn-link" style={{ color: "inherit" }} onClick={loadPaths}>Try again</button>
                   </span>
                 </div>
               )}
@@ -341,6 +348,7 @@ export default function RegisterPage() {
               ))}
               {errors.paths && <div style={{ marginTop: 10 }}><FieldError id="paths" msg={errors.paths} /></div>}
             </fieldset>
+            )}
 
             <div className="card card-cream" style={{ marginTop: 24 }}>
               <label className="check-row">

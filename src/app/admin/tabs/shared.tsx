@@ -50,7 +50,7 @@ export function friendlyDbError(action: string, error: { code?: string; message?
     return `Couldn't ${action}: your account doesn't have permission. Make sure you're signed in as an admin.`;
   }
   if (code === "42P01" || code === "PGRST205" || msg.includes("does not exist") || msg.includes("schema cache")) {
-    return `Couldn't ${action}: this part of the database isn't set up yet. Ask the tech lead to apply the latest database update.`;
+    return `Couldn't ${action}: this part isn't set up yet. Please tell the tech team.`;
   }
   if (msg.includes("fetch") || msg.includes("network")) return `Couldn't ${action}: we couldn't reach the server. Check your connection and try again.`;
   return `Couldn't ${action}. Please try again.${error?.message ? ` (Details: ${error.message})` : ""}`;
@@ -107,9 +107,9 @@ function statusMessage(status: number): string {
   switch (status) {
     case 401: return "Your session has expired. Please sign in again.";
     case 403: return "You don't have permission to do that.";
-    case 404: return "That isn't available yet — the server feature may not be set up. Ask the tech lead.";
+    case 404: return "That isn't available yet. Please tell the tech team.";
     case 429: return "Too many requests. Please wait a few minutes and try again.";
-    case 503: return "This feature isn't set up on the server yet (a server key is missing). Ask the tech lead.";
+    case 503: return "This feature isn't set up yet. Please tell the tech team.";
     default: return "Something went wrong on the server. Please try again.";
   }
 }
@@ -125,17 +125,21 @@ export function formatDateTime(iso: string | null | undefined): string {
 }
 
 /** ISO timestamp → value for <input type="datetime-local"> (browser's local time). */
+/** Lagos is UTC+1 all year (no daylight saving); event times are always entered and shown in Lagos time. */
+const LAGOS_OFFSET_MS = 60 * 60 * 1000;
+
+/** ISO timestamp → <input type="datetime-local"> value in Lagos time. */
 export function isoToLocalInput(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  return new Date(d.getTime() + LAGOS_OFFSET_MS).toISOString().slice(0, 16);
 }
 
-/** <input type="datetime-local"> value → ISO timestamp, or null. */
+/** <input type="datetime-local"> value, read as Lagos time → ISO timestamp, or null. */
 export function localInputToIso(value: string): string | null {
-  if (!value) return null;
-  const d = new Date(value);
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(value)) return null;
+  const d = new Date(`${value.length === 16 ? `${value}:00` : value}+01:00`);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 

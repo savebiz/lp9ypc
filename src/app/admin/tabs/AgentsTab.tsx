@@ -57,10 +57,17 @@ export default function AgentsTab({ runs }: { runs: AgentRun[] }) {
           <div className="alert alert-error" role="alert"><CircleAlert size={18} aria-hidden="true" /> <span>Couldn&apos;t check the set-up: {statusError}</span></div>
         )}
         {status && (
+          <p className="ink-2">
+            {status.gemini && status.serviceRole && status.cronSecret
+              ? "Everything the assistants need is set up."
+              : "Some set-up is missing, so some assistants won't run yet. The tech team can fix the items marked below."}
+          </p>
+        )}
+        {status && (
           <ul className={styles.checks}>
             <Check ok={status.gemini} label="Gemini API key" detail="Needed by all three assistants." />
-            <Check ok={status.serviceRole} label="Supabase service role key" detail="Lets the assistants save their results." />
-            <Check ok={status.cronSecret} label="Cron secret" detail="Protects the daily scheduled runs." />
+            <Check ok={status.serviceRole} label="Server database key" detail="Lets the assistants save their results." />
+            <Check ok={status.cronSecret} label="Daily schedule password" detail="Protects the assistants' daily runs." />
             <li className={styles.check}>
               <Info size={18} aria-hidden="true" className="text-blue" />
               <span><strong>Model:</strong> {status.model || "default"}</span>
@@ -97,7 +104,7 @@ export default function AgentsTab({ runs }: { runs: AgentRun[] }) {
               <thead>
                 <tr>
                   <th scope="col">Assistant</th><th scope="col">Result</th><th scope="col">Started</th><th scope="col">Took</th>
-                  <th scope="col">Items</th><th scope="col">Tokens in / out</th><th scope="col">Problem</th>
+                  <th scope="col">Items</th><th scope="col">AI usage (in / out)</th><th scope="col">Problem</th>
                 </tr>
               </thead>
               <tbody>
@@ -108,7 +115,7 @@ export default function AgentsTab({ runs }: { runs: AgentRun[] }) {
                     <td data-label="Started">{formatDateTime(r.started_at)}</td>
                     <td data-label="Took">{duration(r)}</td>
                     <td data-label="Items">{r.items_processed}</td>
-                    <td data-label="Tokens">{r.input_tokens.toLocaleString("en-GB")} / {r.output_tokens.toLocaleString("en-GB")}</td>
+                    <td data-label="AI usage">{r.input_tokens.toLocaleString("en-GB")} / {r.output_tokens.toLocaleString("en-GB")}</td>
                     <td data-label="Problem"><span style={{ overflowWrap: "anywhere" }}>{r.error ? r.error.slice(0, 300) : "—"}</span></td>
                   </tr>
                 ))}

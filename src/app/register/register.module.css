@@ -16,6 +16,11 @@
   min-width: 0;
 }
 
+.pathsLegend {
+  padding: 0;
+  margin-bottom: 12px;
+}
+
 .group + .group {
   margin-top: 20px;
 }

@@ -9,8 +9,11 @@ import CareerSuggestions from "@/components/career/CareerSuggestions";
 import { PathIcon } from "@/components/ui/icons";
 import { getSession } from "@/lib/session";
 import { CAREER_GOAL_LABELS, suggestPathSlugs } from "@/lib/career-match";
-import { firstName, formatDate, shortPathName } from "@/lib/utils";
-import type { Announcement, CareerPath, CareerPathSuggestion, Community, Job, MemberCareerPath, Profile } from "@/types";
+import { firstName, shortPathName } from "@/lib/utils";
+import EventCard from "@/components/news/EventCard";
+import AnnouncementItem from "@/components/news/AnnouncementItem";
+import { NEWS_COLUMNS, type NewsItem } from "@/components/news/news";
+import type { CareerPath, CareerPathSuggestion, Community, Job, MemberCareerPath, Profile } from "@/types";
 
 export const metadata = { title: "My dashboard · LP9 YPC" };
 
@@ -19,18 +22,22 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const { supabase, user, isAdmin } = await getSession();
   if (!user) redirect("/login?next=/dashboard");
 
-  const [profileRes, pathsRes, savedRes, jobsRes, annRes, allPathsRes, suggestionsRes, communitiesRes] = await Promise.all([
+  const now = new Date().toISOString();
+  const [profileRes, pathsRes, savedRes, jobsRes, annRes, allPathsRes, suggestionsRes, communitiesRes, eventsRes] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
     supabase.from("member_career_paths").select("*, career_paths(*)").eq("member_id", user.id),
     supabase.from("saved_jobs").select("job_id, jobs(*, career_paths(*))").eq("member_id", user.id).order("created_at", { ascending: false }),
     supabase.from("jobs").select("*, career_paths(*)").eq("is_active", true).order("created_at", { ascending: false }).limit(40),
-    supabase.from("announcements").select("*").eq("is_active", true).order("created_at", { ascending: false }).limit(3),
+    supabase.from("announcements").select(NEWS_COLUMNS).eq("is_active", true).eq("kind", "announcement")
+      .order("created_at", { ascending: false }).limit(3),
     supabase.from("career_paths").select("*").order("name"),
     // Phase 2. If these tables aren't there yet (or the query fails), the
     // panels below fall back gracefully instead of breaking the dashboard.
     supabase.from("career_path_suggestions").select("*, career_paths(*)").eq("member_id", user.id).eq("status", "new")
       .order("created_at", { ascending: false }),
     supabase.from("community_members").select("role, communities(*)").eq("member_id", user.id),
+    supabase.from("announcements").select(NEWS_COLUMNS).eq("is_active", true).eq("kind", "event")
+      .or(`starts_at.gte."${now}",ends_at.gte."${now}"`).order("starts_at", { ascending: true }).limit(2),
   ]);
 
   const profile = profileRes.data as Profile | null;
@@ -40,7 +47,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     .map((s) => s.jobs)
     .filter((j): j is Job => !!j);
   const latest = (jobsRes.data ?? []) as Job[];
-  const announcements = (annRes.data ?? []) as Announcement[];
+  const announcements = (annRes.data ?? []) as unknown as NewsItem[];
+  const events = (eventsRes.data ?? []) as unknown as NewsItem[];
   const allPaths = (allPathsRes.data ?? []) as CareerPath[];
 
   const pathIds = new Set(memberPaths.map((m) => m.career_path_id));
@@ -143,19 +151,23 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
           <CommunitiesPanel communities={myCommunities} />
 
-          {announcements.length > 0 && (
-            <section className="panel" aria-labelledby="ann-h">
-              <div className="panel-head"><h2 id="ann-h">Announcements</h2></div>
-              <div className="announcements">
-                {announcements.map((a) => (
-                  <article key={a.id} className="announcement">
-                    <div>
-                      <h3>{a.title}</h3>
-                      {a.content && <p>{a.content}</p>}
-                      <time dateTime={a.created_at}>{formatDate(a.created_at)}</time>
-                    </div>
-                  </article>
-                ))}
+          {(events.length > 0 || announcements.length > 0) && (
+            <section className="panel" aria-labelledby="news-h">
+              <div className="panel-head">
+                <h2 id="news-h">News &amp; events</h2>
+                <Link href="/news" className="btn-link">See all news &amp; events</Link>
+              </div>
+              <div className="stack">
+                {events.length > 0 && (
+                  <div className="announcements">
+                    {events.map((e) => <EventCard key={e.id} event={e} compact />)}
+                  </div>
+                )}
+                {announcements.length > 0 && (
+                  <div className="announcements">
+                    {announcements.map((a) => <AnnouncementItem key={a.id} item={a} compact />)}
+                  </div>
+                )}
               </div>
             </section>
           )}

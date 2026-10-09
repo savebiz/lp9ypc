@@ -36,13 +36,12 @@ export default function JoinButton({
   const page = variant === "page";
 
   if (!userId) {
+    // On directory cards the page's "Join YPC" call-to-action is the one action
+    // for visitors; only the community page offers a sign-in-to-join link.
+    if (!page) return null;
     return (
-      <Link
-        href={`/login?next=/community/${slug}`}
-        className={page ? "btn btn-action" : "btn btn-ghost btn-sm"}
-        aria-label={`Sign in to join ${name}`}
-      >
-        Join
+      <Link href={`/login?next=/community/${slug}`} className="btn btn-action" aria-label={`Sign in to join ${name}`}>
+        Sign in to join
       </Link>
     );
   }

@@ -197,8 +197,8 @@ export default function JobSourcesTab({ sources, adminId, onError, onSuccess, on
                     aria-label={`Run the job finder on ${s.name} now`}>
                     {isRunning ? <Loader2 size={16} className="spin" aria-hidden="true" /> : <Play size={16} aria-hidden="true" />} Run now
                   </button>
-                  <button type="button" className="icon-btn" onClick={() => openEdit(s)} aria-label={`Edit ${s.name}`} title="Edit"><Pencil size={18} /></button>
-                  <button type="button" className="icon-btn danger" onClick={() => remove(s)} aria-label={`Remove ${s.name}`} title="Remove"><Trash2 size={18} /></button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => openEdit(s)} aria-label={`Edit ${s.name}`}><Pencil size={16} aria-hidden="true" /> Edit</button>
+                  <button type="button" className={`btn btn-ghost btn-sm ${styles.dangerGhost}`} onClick={() => remove(s)} aria-label={`Remove ${s.name}`}><Trash2 size={16} aria-hidden="true" /> Remove</button>
                 </div>
               </div>
             );

@@ -164,13 +164,13 @@ export default function AnnouncementsTab({ announcements, adminId, onError, onSu
               <textarea id="a-content" className="input" maxLength={2000} value={form.content} onChange={(e) => set("content", e.target.value)} />
             </div>
             <div className="field">
-              <label className="label" htmlFor="a-starts_at">Starts {!isEvent && <span className="opt">(optional)</span>}</label>
+              <label className="label" htmlFor="a-starts_at">Starts, Lagos time {!isEvent && <span className="opt">(optional)</span>}</label>
               <input id="a-starts_at" className="input" type="datetime-local" value={form.starts_at} onChange={(e) => set("starts_at", e.target.value)}
                 aria-invalid={!!errors.starts_at} aria-describedby={errors.starts_at ? "ae-starts_at" : undefined} />
               {errors.starts_at && <FieldError id="ae-starts_at" msg={errors.starts_at} />}
             </div>
             <div className="field">
-              <label className="label" htmlFor="a-ends_at">Ends <span className="opt">(optional)</span></label>
+              <label className="label" htmlFor="a-ends_at">Ends, Lagos time <span className="opt">(optional)</span></label>
               <input id="a-ends_at" className="input" type="datetime-local" value={form.ends_at} onChange={(e) => set("ends_at", e.target.value)}
                 aria-invalid={!!errors.ends_at} aria-describedby={errors.ends_at ? "ae-ends_at" : undefined} />
               {errors.ends_at && <FieldError id="ae-ends_at" msg={errors.ends_at} />}
@@ -232,11 +232,11 @@ export default function AnnouncementsTab({ announcements, adminId, onError, onSu
                   <p className="small muted" style={{ marginTop: 4 }}>Posted {formatDate(a.created_at)}</p>
                 </div>
                 <div className="actions">
-                  <button className="icon-btn" onClick={() => openEdit(a)} aria-label={`Edit ${a.title}`} title="Edit"><Pencil size={18} /></button>
-                  <button className="icon-btn" onClick={() => toggle(a)} aria-label={`${a.is_active ? "Hide" : "Show"} ${a.title}`} title={a.is_active ? "Hide" : "Show"}>
-                    {a.is_active ? <EyeOff size={18} /> : <Eye size={18} />}
+                  <button className="btn btn-ghost btn-sm" onClick={() => openEdit(a)} aria-label={`Edit ${a.title}`}><Pencil size={16} aria-hidden="true" /> Edit</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => toggle(a)} aria-label={`${a.is_active ? "Hide" : "Show"} ${a.title}`}>
+                    {a.is_active ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />} {a.is_active ? "Hide" : "Show"}
                   </button>
-                  <button className="icon-btn danger" onClick={() => remove(a)} aria-label={`Delete ${a.title}`} title="Delete"><Trash2 size={18} /></button>
+                  <button className={`btn btn-ghost btn-sm ${styles.dangerGhost}`} onClick={() => remove(a)} aria-label={`Delete ${a.title}`}><Trash2 size={16} aria-hidden="true" /> Delete</button>
                 </div>
               </div>
             );

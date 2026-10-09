@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ChevronRight, Users } from "lucide-react";
-import { PathIcon } from "@/components/ui/icons";
+import { CommunityIcon } from "@/components/community/CommunityIcon";
 import type { Community } from "@/types";
 import styles from "./dashboard.module.css";
 
@@ -30,7 +30,7 @@ export default function CommunitiesPanel({ communities }: { communities: MyCommu
             <li key={c.id}>
               <Link href={`/community/${encodeURIComponent(c.slug)}`} className={styles.communityLink}>
                 <span className="icon-tile" aria-hidden="true">
-                  {c.kind === "career" ? <PathIcon slug={c.icon} size={20} /> : <Users size={20} />}
+                  <CommunityIcon community={c} size={20} />
                 </span>
                 <span className={styles.communityName}>
                   {c.name}

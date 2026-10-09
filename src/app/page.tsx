@@ -19,9 +19,9 @@ export default async function LandingPage() {
   const now = new Date().toISOString();
   const [annRes, eventsRes, pathsRes] = await Promise.all([
     supabase.from("announcements").select(NEWS_COLUMNS).eq("is_active", true).eq("kind", "announcement")
-      .order("created_at", { ascending: false }).limit(3),
+      .order("created_at", { ascending: false }).limit(1),
     supabase.from("announcements").select(NEWS_COLUMNS).eq("is_active", true).eq("kind", "event")
-      .or(`starts_at.gte."${now}",ends_at.gte."${now}"`).order("starts_at", { ascending: true }).limit(3),
+      .or(`starts_at.gte."${now}",ends_at.gte."${now}"`).order("starts_at", { ascending: true }).limit(2),
     supabase.from("career_paths").select("*").order("name"),
   ]);
   const announcements = (annRes.data ?? []) as unknown as NewsItem[];

@@ -171,7 +171,7 @@ a.backLink { color: var(--ink-2); text-decoration: none; margin-top: 16px; }
 /* ── Manage page ──────────────────────────────────────────────────────── */
 .queue { display: grid; gap: 10px; list-style: none; margin: 0; padding: 0; }
 .queueItem { padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--white); }
-.queueKind { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.queueKind { font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .queueTitle { margin-top: 2px; font-family: var(--body); font-size: 16px; font-weight: 600; letter-spacing: 0; line-height: 1.4; overflow-wrap: anywhere; }
 .excerpt {
   margin-top: 6px; color: var(--ink-2); font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere;

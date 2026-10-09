@@ -204,11 +204,11 @@ export default function CommunitiesTab({ communities, communityMembers, communit
                   </div>
                   <div className="actions">
                     {c.is_active && (
-                      <Link href={`/community/${encodeURIComponent(c.slug)}`} className="icon-btn" aria-label={`Open ${c.name}`} title="Open">
-                        <ExternalLink size={18} />
+                      <Link href={`/community/${encodeURIComponent(c.slug)}`} className="btn btn-ghost btn-sm" aria-label={`Open ${c.name}`}>
+                        <ExternalLink size={16} aria-hidden="true" /> Open
                       </Link>
                     )}
-                    <button type="button" className="icon-btn" onClick={() => openEdit(c)} aria-label={`Edit ${c.name}`} title="Edit"><Pencil size={18} /></button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => openEdit(c)} aria-label={`Edit ${c.name}`}><Pencil size={16} aria-hidden="true" /> Edit</button>
                   </div>
                 </div>
 

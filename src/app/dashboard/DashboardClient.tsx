@@ -73,7 +73,7 @@ export default function DashboardClient({ userId, forYou, forYouTitle, saved: in
         )}
       </section>
 
-      {toast && <div className="toast" role="status">{toast}</div>}
+      <div role="status" aria-live="polite">{toast && <div className="toast">{toast}</div>}</div>
     </>
   );
 }

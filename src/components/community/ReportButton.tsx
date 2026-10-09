@@ -157,7 +157,7 @@ export default function ReportButton({ targetType, targetId, communityId, userId
               style={{ minHeight: 88 }}
             />
             <p id={detailHint} className="hint">
-              Only community managers and YPC admins see reports. The author isn&apos;t told who reported them.
+              Only community managers and YPC admins see reports, including that it came from you. The author isn&apos;t told who reported them.
             </p>
           </div>
 
