@@ -1,5 +1,7 @@
 # Phase 2 contracts
 
+AI provider: **Google Gemini** over REST (`src/lib/agents/gemini.ts`, env `GEMINI_API_KEY`, optional `GEMINI_MODEL`). See the `lp9-ai-agents` skill.
+
 Shared agreements between the parallel builders. Data model:
 `supabase/migrations/20261009120000_community_agents.sql`. Types: `src/types/index.ts`.
 If you need to change a contract, say so in your report — don't silently diverge.
@@ -61,7 +63,7 @@ Response: `{ ok: true }`. Every action writes `moderation_log` (`actor_type: "hu
 Response: `{ ok: true, status: "ok"|"empty"|"blocked"|"error", found: number, inserted: number, message: string }`
 
 ### `GET /api/admin/agents/status` (admins only)
-Response: `{ ok: true, anthropic: boolean, serviceRole: boolean, cronSecret: boolean }`
+Response: `{ ok: true, gemini: boolean, serviceRole: boolean, cronSecret: boolean, model: string }`
 - Booleans only, never values.
 
 ### Crons (`GET`, `Authorization: Bearer $CRON_SECRET`)
@@ -101,7 +103,7 @@ export async function moderatePost(input: {
   kind: "thread" | "reply"; title?: string; body: string; communityName: string;
 }): Promise<{ decision: "allow" | "hold"; categories: string[]; reason: string; source: "agent" | "unavailable" }>
 ```
-`source: "unavailable"` means the agent couldn't decide. The route then publishes with `needs_review = true`.
+`source: "unavailable"` means the agent couldn't decide (no `GEMINI_API_KEY`, timeout or error). The route then publishes with `needs_review = true`.
 
 ## Career keyword matcher (member-admin-engineer exports)
 
