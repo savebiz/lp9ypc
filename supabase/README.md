@@ -48,8 +48,8 @@ expected.
 
 ### 4. Auth settings
 **Authentication → URL Configuration**
-- **Site URL:** `https://lp-9-ypc-community-platform.vercel.app`
-- **Redirect URLs:** add `https://lp-9-ypc-community-platform.vercel.app/**`
+- **Site URL:** `https://lp9ypc.vercel.app`
+- **Redirect URLs:** add `https://lp9ypc.vercel.app/**`
   and `http://localhost:3000/**`. Confirmation and password-reset links come
   back to `/auth/callback`.
 

@@ -42,11 +42,12 @@ export function buildResearchSchema(catalogue: CatalogueEntry[]): Record<string,
     type: "object",
     properties: {
       summary: { type: "string", description: "2–4 plain sentences, at most 600 characters." },
-      matches: { type: "array", maxItems: MAX_MATCHES, items: pick },
-      switch_options: { type: "array", maxItems: MAX_SWITCH, items: pick },
+      // No maxItems: Gemini rejects it on arrays of objects (HTTP 400); the
+      // validator below caps each list instead.
+      matches: { type: "array", items: pick },
+      switch_options: { type: "array", items: pick },
       emerging_paths: {
         type: "array",
-        maxItems: MAX_EMERGING,
         items: {
           type: "object",
           properties: {

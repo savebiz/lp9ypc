@@ -58,7 +58,8 @@ export function buildJobSchema(slugs: string[]): Record<string, unknown> {
     properties: {
       jobs: {
         type: "array",
-        maxItems: MAX_JOBS_PER_PAGE,
+        // No maxItems: Gemini rejects it on this array of objects (HTTP 400).
+        // validateExtractedJobs caps the list at MAX_JOBS_PER_PAGE instead.
         items: {
           type: "object",
           properties: {

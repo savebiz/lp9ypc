@@ -18,7 +18,7 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import { checkPublicUrl, checkResolvedAddresses } from "./safe-url.ts";
 
-export const BOT_USER_AGENT = "LP9YPC-JobBot/1.0 (+https://lp-9-ypc-community-platform.vercel.app/about)";
+export const BOT_USER_AGENT = "LP9YPC-JobBot/1.0 (+https://lp9ypc.vercel.app/about)";
 export const PAGE_CONTENT_TYPES = ["text/html", "application/xhtml+xml", "text/plain"];
 export const FETCH_TIMEOUT_MS = 15_000;
 export const MAX_BODY_BYTES = 2 * 1024 * 1024;
