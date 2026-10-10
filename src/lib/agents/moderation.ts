@@ -28,6 +28,12 @@ export interface ModerationResult {
   categories: string[];
   reason: string;
   source: "agent" | "unavailable";
+  /**
+   * Only when source is "unavailable": "quota" = the key has no usable quota
+   * (billing / daily limit; won't clear soon), "outage" = brief problem
+   * (503, timeout, network, no key, error). Callers fail CLOSED on quota.
+   */
+  unavailableKind?: "quota" | "outage";
 }
 
 export const MODERATION_TIMEOUT_MS = 8_000;
@@ -107,8 +113,8 @@ function cantRead(): ModerationResult {
   };
 }
 
-function unavailable(why: string): ModerationResult {
-  return { decision: "allow", categories: [], reason: `Automatic check unavailable (${why}).`, source: "unavailable" };
+function unavailable(why: string, kind: "quota" | "outage" = "outage"): ModerationResult {
+  return { decision: "allow", categories: [], reason: `Automatic check unavailable (${why}).`, source: "unavailable", unavailableKind: kind };
 }
 
 /**
@@ -158,7 +164,7 @@ export async function moderatePostDetailed(
       : isBusyFailure(res)
         ? "AI service busy"
         : res.reason.replace("_", " ");
-    return { ...unavailable(why), usage };
+    return { ...unavailable(why, isQuotaFailure(res) ? "quota" : "outage"), usage };
   }
 
   const parsed = parseModerationOutput(res.data);
@@ -169,8 +175,9 @@ export async function moderatePostDetailed(
 /** Contract function used by POST /api/community/threads and /replies. Never throws. */
 export async function moderatePost(input: ModerationInput, opts: { timeoutMs?: number } = {}): Promise<ModerationResult> {
   try {
-    const { decision, categories, reason, source } = await moderatePostDetailed(input, opts);
-    return { decision, categories, reason, source };
+    const { usage: _usage, ...result } = await moderatePostDetailed(input, opts);
+    void _usage;
+    return result;
   } catch {
     return unavailable("error");
   }

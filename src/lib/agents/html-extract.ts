@@ -91,7 +91,7 @@ export function extractPage(html: string, pageUrl: string): ExtractedPage {
 
   // 2. A <base href> changes how relative links resolve in a browser.
   let base = pageUrl;
-  const baseTag = /<base\b([^>]*)>/i.exec(s);
+  const baseTag = /<base\b([^<>]*)>/i.exec(s);
   if (baseTag) {
     const href = readAttr(baseTag[1], "href");
     const resolved = href ? resolveHttp(href, pageUrl) : null;
@@ -120,16 +120,16 @@ export function extractPage(html: string, pageUrl: string): ExtractedPage {
     return idx >= 0 ? ` ${inner} \u0000${idx}\u0000 ` : ` ${inner} `;
   });
   // Unclosed anchors and image-map areas still count as links on the page.
-  s = s.replace(/<(?:a|area)\b([^>]*)>/gi, (_m, attrs: string) => {
+  s = s.replace(/<(?:a|area)\b([^<>]*)>/gi, (_m, attrs: string) => {
     const idx = addLink(readAttr(attrs, "href"));
     return idx >= 0 ? ` \u0000${idx}\u0000 ` : " ";
   });
 
   // 4. Keep some structure, then strip every remaining tag.
-  s = s.replace(new RegExp(`<\\/?(?:${BLOCK_TAGS})\\b[^>]*>`, "gi"), "\n");
-  s = s.replace(/<\/?(?:td|th)\b[^>]*>/gi, " ");
-  s = s.replace(/<\/?[a-zA-Z][^>]*>/g, " ");
-  s = s.replace(/<![^>]*>/g, " ");
+  s = s.replace(new RegExp(`<\\/?(?:${BLOCK_TAGS})\\b[^<>]*>`, "gi"), "\n");
+  s = s.replace(/<\/?(?:td|th)\b[^<>]*>/gi, " ");
+  s = s.replace(/<\/?[a-zA-Z][^<>]*>/g, " ");
+  s = s.replace(/<![^<>]*>/g, " ");
 
   // 5. Decode entities only AFTER tags are gone, so "&lt;script&gt;" stays text.
   s = decodeEntities(s);
@@ -170,15 +170,78 @@ export function mainContentHtml(html: string): string {
   let s = String(html ?? "").replace(/\u0000/g, "");
   s = s.replace(/<!--[\s\S]*?(?:-->|$)/g, " ");
   s = s.replace(/<(script|style|noscript|svg|template|iframe|object|canvas)\b[\s\S]*?(?:<\/\1\s*>|$)/gi, " ");
-  const baseTag = /<base\b[^>]*>/i.exec(s)?.[0] ?? "";
+  const baseTag = /<base\b[^<>]{0,2000}>/i.exec(s)?.[0] ?? "";
 
-  const main = /<main\b[^>]*>([\s\S]*)<\/main\s*>/i.exec(s);
-  if (main) return baseTag + main[1];
+  // <main>: from the first opening tag to the LAST closing tag (indexOf, linear).
+  const mainOpen = /<main\b[^<>]{0,2000}>/i.exec(s);
+  if (mainOpen) {
+    const start = mainOpen.index + mainOpen[0].length;
+    const end = lastIndexOfCi(s, "</main");
+    if (end > start) return baseTag + s.slice(start, end);
+  }
 
-  const body = /<body\b[^>]*>([\s\S]*?)(?:<\/body\s*>|$)/i.exec(s);
-  let region = body ? body[1] : s;
-  region = region.replace(new RegExp(`<(${CHROME_TAGS})\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>`, "gi"), " ");
-  return baseTag + region;
+  const bodyOpen = /<body\b[^<>]{0,2000}>/i.exec(s);
+  let region = s;
+  if (bodyOpen) {
+    const start = bodyOpen.index + bodyOpen[0].length;
+    const end = indexOfCi(s, "</body", start);
+    region = s.slice(start, end > start ? end : undefined);
+  }
+  return baseTag + removeElements(region, CHROME_TAGS);
+}
+
+/**
+ * Case-insensitive indexOf for a tag-like needle made of "<", "/" and letters
+ * (no toLowerCase: it can change the string's length and shift indexes).
+ */
+function indexOfCi(hay: string, needle: string, from = 0): number {
+  const re = new RegExp(needle.replace(/[^</a-zA-Z0-9]/g, ""), "gi");
+  re.lastIndex = from;
+  const m = re.exec(hay);
+  return m ? m.index : -1;
+}
+
+/** Last case-insensitive match; linear (each search starts after the previous hit). */
+function lastIndexOfCi(hay: string, needle: string): number {
+  let last = -1;
+  for (let i = indexOfCi(hay, needle); i >= 0; i = indexOfCi(hay, needle, i + 1)) last = i;
+  return last;
+}
+
+/** At most this many opening tags are examined when removing page chrome. */
+const MAX_CHROME_OPENINGS = 2_000;
+
+/**
+ * Removes <name …>…</name> blocks for the given tag names. Linear (security
+ * review L1): each opening tag's closing tag is found with one forward
+ * indexOf; once a tag name has no closing tag left, later openings of it are
+ * skipped without searching again; at most MAX_CHROME_OPENINGS openings.
+ */
+export function removeElements(html: string, names: string): string {
+  const open = new RegExp(`<(${names})\\b[^<>]{0,2000}>`, "gi");
+  const noClose = new Set<string>();
+  const parts: string[] = [];
+  let kept = 0;
+  let openings = 0;
+  let m: RegExpExecArray | null;
+  while ((m = open.exec(html)) && openings < MAX_CHROME_OPENINGS) {
+    openings++;
+    if (m.index < kept) continue; // inside a block already removed
+    const name = m[1].toLowerCase();
+    if (noClose.has(name)) continue;
+    const close = indexOfCi(html, `</${name}`, m.index + m[0].length);
+    if (close < 0) {
+      noClose.add(name);
+      continue;
+    }
+    const closeEnd = html.indexOf(">", close);
+    const end = closeEnd < 0 ? html.length : closeEnd + 1;
+    parts.push(html.slice(kept, m.index), " ");
+    kept = end;
+    open.lastIndex = end;
+  }
+  parts.push(html.slice(kept));
+  return parts.join("");
 }
 
 /**

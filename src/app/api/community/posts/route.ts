@@ -3,17 +3,26 @@
  * Request: { targetType: "thread" | "reply", targetId, title? (threads), body }.
  *
  * Origin check → signed-in user → service role available → valid input →
- * the post is the caller's own, not removed, not held by a human, and not
- * edited in the last 30 s → community still active and the caller still a
+ * the post is the caller's own, not removed, not held by a human, not still
+ * waiting for its first check, not edited in the last 2 minutes, and the
+ * author has edited fewer than 5 posts in the last 10 minutes → community still active and the caller still a
  * member (or moderator) → for replies, the thread still open → update
- * title/body, edited_at = now(), status 'pending' (hidden from others until
+ * title/body, edited_at = now() (only if still not held by a human), status 'pending' (hidden from others until
  * re-checked; likes and replies stay) → local rules (hold now if hit) →
  * 200 { ok, id, status: "pending" | "held", message }; the AI check runs
- * after the response (schedulePostModeration).
+ * after the response (schedulePostModeration). The check only applies its
+ * verdict while edited_at still equals the value written here (savedAt), so
+ * a later edit can never be published by an earlier check.
  */
 import { MESSAGES, checkOrigin, fail, json, parseBody, requireServiceRole, requireUser } from "@/app/api/_lib/http";
 import { boundedText, isUuid } from "@/app/api/_lib/guards";
-import { EDIT_COOLDOWN_MS, POST_MESSAGES, moderateInBackground } from "@/app/api/_lib/community";
+import {
+  EDIT_AUTHOR_LIMIT,
+  EDIT_AUTHOR_WINDOW_MS,
+  EDIT_COOLDOWN_MS,
+  POST_MESSAGES,
+  moderateInBackground,
+} from "@/app/api/_lib/community";
 
 export const dynamic = "force-dynamic";
 /** The background moderation check (after the response) needs up to ~25 s. */
@@ -73,8 +82,20 @@ export async function PATCH(req: Request) {
   if (post.status === "held" && post.moderated_by === "human") {
     return fail(403, "A community manager is reviewing this post, so it can't be edited right now.");
   }
+  if (post.status === "pending" && !post.edited_at) return fail(409, POST_MESSAGES.editFirstCheck);
   if (post.edited_at && Date.now() - new Date(post.edited_at).getTime() < EDIT_COOLDOWN_MS) {
     return fail(429, POST_MESSAGES.editTooSoon);
+  }
+
+  // Per-author cap across threads + replies.
+  const since = new Date(Date.now() - EDIT_AUTHOR_WINDOW_MS).toISOString();
+  const [threadEdits, replyEdits] = await Promise.all([
+    admin.from("threads").select("id", { count: "exact", head: true }).eq("author_id", user.id).gte("edited_at", since),
+    admin.from("replies").select("id", { count: "exact", head: true }).eq("author_id", user.id).gte("edited_at", since),
+  ]);
+  if (threadEdits.error || replyEdits.error) return fail(500, MESSAGES.serverError);
+  if ((threadEdits.count ?? 0) + (replyEdits.count ?? 0) >= EDIT_AUTHOR_LIMIT) {
+    return fail(429, POST_MESSAGES.editRateLimited);
   }
 
   const [{ data: community, error: communityError }, { data: canModerate }, { data: membership, error: memberError }, threadRes] =
@@ -108,7 +129,8 @@ export async function PATCH(req: Request) {
     return json({ ok: true, id: post.id, status, message: "Nothing changed." });
   }
 
-  // Only if nothing changed in between (status, and no other edit got in first).
+  // Only if nothing changed in between (status, no other edit got in first,
+  // and no manager hold landed meanwhile).
   const editedAt = new Date().toISOString();
   let update = admin
     .from(table)
@@ -124,14 +146,19 @@ export async function PATCH(req: Request) {
     })
     .eq("id", post.id)
     .eq("author_id", user.id)
-    .eq("status", post.status);
+    .eq("status", post.status)
+    .or("moderated_by.is.null,moderated_by.neq.human");
   update = post.edited_at ? update.eq("edited_at", post.edited_at) : update.is("edited_at", null);
   const { data: updated, error: updateError } = await update.select("id");
   if (updateError) {
     console.error(`[api/community/posts] update failed (${updateError.code ?? "unknown"})`);
     return fail(500, POST_MESSAGES.saveFailed);
   }
-  if (!Array.isArray(updated) || updated.length === 0) return fail(409, POST_MESSAGES.editTooSoon);
+  if (!Array.isArray(updated) || updated.length === 0) {
+    const { data: now } = await admin.from(table).select("moderated_by").eq("id", post.id).maybeSingle();
+    if ((now as { moderated_by: string | null } | null)?.moderated_by === "human") return fail(409, POST_MESSAGES.editHeldByManager);
+    return fail(409, POST_MESSAGES.editTooSoon);
+  }
 
   const status = await moderateInBackground(admin, {
     kind: targetType,
@@ -140,6 +167,8 @@ export async function PATCH(req: Request) {
     communityName: c.name,
     ...(isThread && title ? { title } : {}),
     body: text,
+    savedAt: editedAt,
+    isEdit: true,
   });
   return json({ ok: true, id: post.id, status, message: status === "held" ? POST_MESSAGES.held : POST_MESSAGES.editPending });
 }

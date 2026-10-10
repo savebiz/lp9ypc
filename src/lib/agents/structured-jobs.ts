@@ -27,6 +27,8 @@ const MAX_LD_BLOCK_CHARS = 1_000_000;
 const MAX_NODES = 20_000;
 const MAX_DEPTH = 12;
 const MAX_FEED_ITEMS = 200;
+/** One feed item longer than this is cut (real items are a few KB). */
+const MAX_ITEM_CHARS = 50_000;
 /** Feed items older than this (by pubDate/updated) are treated as stale. */
 export const FEED_MAX_AGE_DAYS = 60;
 
@@ -72,6 +74,44 @@ function isObj(v: unknown): v is Obj {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+// ── Linear element scanning (security review L1) ────────────────────────────
+
+/** At most this many opening tags are examined per scan, so hostile pages stay cheap. */
+export const MAX_OPENINGS = 2_000;
+const MAX_ATTR_CHARS = 1_000;
+
+export interface FoundElement {
+  /** Namespace prefix including the colon ("atom:"), or "" */
+  prefix: string;
+  attrs: string;
+  inner: string;
+  /** Index just after the element (or after the opening tag when self-closing). */
+  end: number;
+}
+
+/**
+ * Finds the next <name …>…</name> (optionally namespaced, e.g. <atom:link>)
+ * at or after `from`. Linear: the opening tag's attributes are bounded, and
+ * the closing tag is searched forward once; if there is no closing tag
+ * anywhere after it, null is returned (no later element can close either),
+ * so callers stop instead of rescanning the rest of the page per opening.
+ * Self-closing tags return an empty `inner`.
+ */
+export function findElement(src: string, names: string, from = 0): FoundElement | null {
+  const open = new RegExp(`<([\\w-]+:)?(?:${names})\\b([^<>]{0,${MAX_ATTR_CHARS}})>`, "gi");
+  open.lastIndex = from;
+  const m = open.exec(src);
+  if (!m) return null;
+  const afterOpen = m.index + m[0].length;
+  const attrs = m[2] ?? "";
+  if (attrs.trimEnd().endsWith("/")) return { prefix: m[1] ?? "", attrs, inner: "", end: afterOpen };
+  const close = new RegExp(`<\\/(?:[\\w-]+:)?(?:${names})\\s*>`, "gi");
+  close.lastIndex = afterOpen;
+  const c = close.exec(src);
+  if (!c) return null;
+  return { prefix: m[1] ?? "", attrs, inner: src.slice(afterOpen, c.index), end: c.index + c[0].length };
+}
+
 // ── Small text helpers ──────────────────────────────────────────────────────
 
 /** Strips tags (also HTML that was entity-encoded inside JSON/XML), decodes entities, collapses whitespace. */
@@ -82,7 +122,7 @@ export function plainText(raw: string): string {
   for (let i = 0; i < 2; i++) {
     s = s.replace(/<(script|style)\b[\s\S]*?(?:<\/\1\s*>|$)/gi, " ");
     s = s.replace(/<br\s*\/?>|<\/(?:p|div|li|h[1-6])\s*>/gi, ". ");
-    s = s.replace(/<\/?[a-zA-Z][^>]*>/g, " ");
+    s = s.replace(/<\/?[a-zA-Z][^<>]*>/g, " ");
     s = decodeEntities(s);
   }
   return s
@@ -150,12 +190,17 @@ function hostKey(u: string): string | null {
   }
 }
 
-/** Same site: identical host (ignoring www.), or one is a subdomain of the other. */
-export function sameSite(a: string, b: string): boolean {
-  const x = hostKey(a);
-  const y = hostKey(b);
-  if (!x || !y) return false;
-  return x === y || x.endsWith(`.${y}`) || y.endsWith(`.${x}`);
+/**
+ * Is `candidate` on the same site as the page? Only the page's own host
+ * (ignoring a leading "www.") or a subdomain of it, NEVER the parent domain
+ * or a sibling (security review L2): a page on jobs.example.ng can't vouch
+ * for example.ng or evil.example.ng. Asymmetric: (candidate, pageUrl).
+ */
+export function sameSite(candidate: string, pageUrl: string): boolean {
+  const c = hostKey(candidate);
+  const p = hostKey(pageUrl);
+  if (!c || !p) return false;
+  return c === p || c.endsWith(`.${p}`);
 }
 
 // ── Enum mapping and career-path guess ──────────────────────────────────────
@@ -224,13 +269,16 @@ function isJobPosting(node: Obj): boolean {
 /** Parses every application/ld+json block. Broken blocks are skipped. */
 export function parseJsonLdBlocks(html: string): unknown[] {
   const out: unknown[] = [];
-  const re = /<script\b([^>]{0,500})>([\s\S]*?)<\/script\s*>/gi;
-  let m: RegExpExecArray | null;
   let blocks = 0;
-  while ((m = re.exec(html)) && blocks < MAX_LD_BLOCKS) {
-    if (!/type\s*=\s*["']?\s*application\/ld\+json/i.test(m[1])) continue;
+  let from = 0;
+  for (let openings = 0; openings < MAX_OPENINGS && blocks < MAX_LD_BLOCKS; openings++) {
+    const el = findElement(html, "script", from);
+    if (!el) break;
+    from = el.end;
+    if (el.prefix) continue;
+    if (!/type\s*=\s*["']?\s*application\/ld\+json/i.test(el.attrs)) continue;
     blocks++;
-    let raw = m[2];
+    let raw = el.inner;
     if (raw.length > MAX_LD_BLOCK_CHARS) continue;
     raw = raw
       .replace(/^\s*(?:<!--|\/\/\s*<!\[CDATA\[|<!\[CDATA\[)/, "")
@@ -408,24 +456,43 @@ export function looksLikeFeed(body: string, contentType = ""): boolean {
 }
 
 function tagText(xml: string, names: string): string | null {
-  const re = new RegExp(`<(?:[\\w-]+:)?(?:${names})\\b[^>]*>([\\s\\S]*?)<\\/(?:[\\w-]+:)?(?:${names})\\s*>`, "i");
-  const m = re.exec(xml);
-  if (!m) return null;
-  const t = plainText(m[1]);
+  const el = findElement(xml, names);
+  if (!el) return null;
+  const t = plainText(el.inner);
+  return t || null;
+}
+
+function rawText(inner: string): string | null {
+  const t = decodeEntities(inner.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")).trim();
   return t || null;
 }
 
 function rawTagText(xml: string, names: string): string | null {
-  const re = new RegExp(`<(?:[\\w-]+:)?(?:${names})\\b[^>]*>([\\s\\S]*?)<\\/(?:[\\w-]+:)?(?:${names})\\s*>`, "i");
-  const m = re.exec(xml);
-  if (!m) return null;
-  const t = decodeEntities(m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")).trim();
-  return t || null;
+  const el = findElement(xml, names);
+  return el ? rawText(el.inner) : null;
+}
+
+/** RSS <link>url</link>: un-namespaced, no attributes needed, not self-closing (skips <atom:link …/>). */
+function rssLink(item: string): string | null {
+  let from = 0;
+  for (let i = 0; i < 50; i++) {
+    const el = findElement(item, "link", from);
+    if (!el) return null;
+    from = el.end;
+    if (!el.prefix && el.inner.trim()) return rawText(el.inner);
+  }
+  return null;
+}
+
+/** <guid isPermaLink="true">url</guid>, else null. */
+function permalinkGuid(item: string): string | null {
+  const el = findElement(item, "guid");
+  return el && /isPermaLink\s*=\s*["']true["']/i.test(el.attrs) ? rawText(el.inner) : null;
 }
 
 function atomLink(entry: string): string | null {
   let fallback: string | null = null;
-  for (const m of entry.matchAll(/<link\b([^>]*)\/?>/gi)) {
+  for (const m of entry.matchAll(/<link\b([^<>]{0,1000})>/gi)) {
     const attrs = m[1];
     const href = /\bhref\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1];
     if (!href) continue;
@@ -457,7 +524,7 @@ function daysBetween(a: string, b: string): number {
 
 function fromFeed(xml: string, pageUrl: string, opts: StructuredOptions): StructuredExtraction {
   const isAtom = !/<rss\b|<rdf:RDF\b/i.test(xml.slice(0, 2000)) && /<entry\b/i.test(xml);
-  const itemRe = isAtom ? /<entry\b[^>]*>([\s\S]*?)<\/entry\s*>/gi : /<item\b[^>]*>([\s\S]*?)<\/item\s*>/gi;
+  const itemTag = isAtom ? "entry" : "item";
   const slugs = opts.slugs ?? [];
   const jobs: RawJob[] = [];
   const extraLinks = new Set<string>();
@@ -465,21 +532,21 @@ function fromFeed(xml: string, pageUrl: string, opts: StructuredOptions): Struct
   let noLink = 0;
   let stale = 0;
 
-  for (const m of xml.matchAll(itemRe)) {
+  let from = 0;
+  for (let openings = 0; openings < MAX_OPENINGS; openings++) {
     if (seen >= MAX_FEED_ITEMS || jobs.length >= MAX_STRUCTURED_JOBS) break;
+    const el = findElement(xml, itemTag, from);
+    if (!el) break;
+    from = el.end;
+    if (el.prefix || !el.inner) continue;
     seen++;
-    const item = m[1];
+    const item = el.inner.slice(0, MAX_ITEM_CHARS);
     const rawTitle = tagText(item, "title");
     if (!rawTitle) continue;
 
-    const plainLink = /<link\s*>([\s\S]*?)<\/link\s*>/i.exec(item)?.[1];
-    const rawLink = isAtom
-      ? atomLink(item)
-      : plainLink
-        ? decodeEntities(plainLink.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")).trim()
-        : atomLink(item);
-    const guid = /<guid\b[^>]*isPermaLink\s*=\s*["']true["'][^>]*>([\s\S]*?)<\/guid>/i.exec(item)?.[1];
-    const link = normalizeLink(rawLink ?? (guid ? decodeEntities(guid) : ""), pageUrl);
+    const rawLink = isAtom ? atomLink(item) : (rssLink(item) ?? atomLink(item));
+    const guid = permalinkGuid(item);
+    const link = normalizeLink(rawLink ?? guid ?? "", pageUrl);
     if (!link) {
       noLink++;
       continue;

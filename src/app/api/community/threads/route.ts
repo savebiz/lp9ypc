@@ -67,6 +67,7 @@ export async function POST(req: Request) {
     communityName: c.name,
     title,
     body: text,
+    savedAt: null,
   });
   return json({ ok: true, id, status, message: status === "held" ? POST_MESSAGES.held : POST_MESSAGES.pending }, 201);
 }

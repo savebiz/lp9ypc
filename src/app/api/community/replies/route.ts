@@ -108,6 +108,6 @@ export async function POST(req: Request) {
     }
   }
 
-  const status = await moderateInBackground(admin, { kind: "reply", id, communityId: c.id, communityName: c.name, body: text });
+  const status = await moderateInBackground(admin, { kind: "reply", id, communityId: c.id, communityName: c.name, body: text, savedAt: null });
   return json({ ok: true, id, status, message: status === "held" ? POST_MESSAGES.held : POST_MESSAGES.pending }, 201);
 }

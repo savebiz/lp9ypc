@@ -18,15 +18,21 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export const POST_LIMIT = 10;
 export const POST_WINDOW_MS = 10 * 60 * 1000;
-/** One edit per post per 30 seconds. */
-export const EDIT_COOLDOWN_MS = 30 * 1000;
+/** One edit per post per 2 minutes. */
+export const EDIT_COOLDOWN_MS = 2 * 60 * 1000;
+/** At most 5 edited posts (threads + replies) per author per 10 minutes. */
+export const EDIT_AUTHOR_LIMIT = 5;
+export const EDIT_AUTHOR_WINDOW_MS = 10 * 60 * 1000;
 
 export const POST_MESSAGES = {
   pending: "Posted. We're doing a quick check before others can see it.",
   editPending: "Saved. We're doing a quick check before others can see it.",
   held: "Held for review — a community manager will check it soon.",
   rateLimited: "You've posted a lot in the last few minutes. Please wait a little and try again.",
-  editTooSoon: "You've just edited this. Please wait a few seconds and try again.",
+  editTooSoon: "You've just edited this. Please wait a couple of minutes and try again.",
+  editRateLimited: "You've edited a lot in the last few minutes. Please wait a little and try again.",
+  editFirstCheck: "Your post is still being checked. You can edit it in a moment.",
+  editHeldByManager: "This post has been held by a manager and can't be edited.",
   saveFailed: "We couldn't save your post just now. Please try again.",
 } as const;
 
@@ -66,12 +72,9 @@ export async function holdIfLocalRulesHit(admin: SupabaseClient, job: PostModera
   if (!local.hit) return false;
   const result = { decision: "hold" as const, categories: local.categories, reason: local.reason, source: "agent" as const };
   const table = job.kind === "thread" ? "threads" : "replies";
-  const { data, error } = await admin
-    .from(table)
-    .update(moderationColumns(result))
-    .eq("id", job.id)
-    .eq("status", "pending")
-    .select("id");
+  // Only the exact version that was checked: a newer edit (different edited_at) is left pending for its own check.
+  const base = admin.from(table).update(moderationColumns(result)).eq("id", job.id).eq("status", "pending");
+  const { data, error } = await (job.savedAt ? base.eq("edited_at", job.savedAt) : base.is("edited_at", null)).select("id");
   if (error) {
     // Still pending (invisible to others): the stale safety net and the daily sweep pick it up.
     console.error(`[api/community] local-rule hold failed (${error.code ?? "unknown"})`);
@@ -118,14 +121,14 @@ export async function scheduleStalePostChecks(thread: {
     const [threadRes, repliesRes] = await Promise.all([
       admin
         .from("threads")
-        .select("id, title, body")
+        .select("id, title, body, edited_at")
         .eq("id", thread.id)
         .eq("status", "pending")
         .lt("updated_at", cutoff)
         .maybeSingle(),
       admin
         .from("replies")
-        .select("id, body")
+        .select("id, body, edited_at")
         .eq("thread_id", thread.id)
         .eq("status", "pending")
         .lt("updated_at", cutoff)
@@ -134,10 +137,18 @@ export async function scheduleStalePostChecks(thread: {
     ]);
 
     const jobs: PostModerationJob[] = [];
-    const t = threadRes.data as { id: string; title: string; body: string } | null;
-    if (t) jobs.push({ kind: "thread", id: t.id, communityId: thread.communityId, communityName: thread.communityName, title: t.title, body: t.body });
-    for (const r of (repliesRes.data ?? []) as { id: string; body: string }[]) {
-      jobs.push({ kind: "reply", id: r.id, communityId: thread.communityId, communityName: thread.communityName, body: r.body });
+    const t = threadRes.data as { id: string; title: string; body: string; edited_at: string | null } | null;
+    if (t) {
+      jobs.push({
+        kind: "thread", id: t.id, communityId: thread.communityId, communityName: thread.communityName,
+        title: t.title, body: t.body, savedAt: t.edited_at, isEdit: t.edited_at !== null,
+      });
+    }
+    for (const r of (repliesRes.data ?? []) as { id: string; body: string; edited_at: string | null }[]) {
+      jobs.push({
+        kind: "reply", id: r.id, communityId: thread.communityId, communityName: thread.communityName,
+        body: r.body, savedAt: r.edited_at, isEdit: r.edited_at !== null,
+      });
     }
 
     const now = Date.now();

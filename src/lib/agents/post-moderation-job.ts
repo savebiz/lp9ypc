@@ -16,6 +16,7 @@ export {
   runPostModeration,
   moderationColumns,
   logPostModeration,
+  mustFailClosed,
   type PostModerationJob,
   type PostModerationColumns,
 } from "./post-moderation-run.ts";

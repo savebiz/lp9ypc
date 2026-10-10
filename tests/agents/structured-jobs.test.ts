@@ -171,3 +171,38 @@ describe("extractMainContent (AI fallback input)", () => {
     assert.match(page.text, /Real job text here/);
   });
 });
+
+describe("security review L1/L2", () => {
+  test("L1: 40k unclosed <script>, <item>, <entry> and chrome tags are processed quickly", async () => {
+    const { removeElements, mainContentHtml } = await import("../../src/lib/agents/html-extract.ts");
+    const cases: [string, () => unknown][] = [
+      ["ld+json", () => extractStructuredJobs(`<html>${'<script type="application/ld+json">'.repeat(40_000)}</html>`, "https://x.example/", "text/html")],
+      ["rss items", () => extractStructuredJobs(`<rss version="2.0"><channel>${"<item><title>".repeat(40_000)}</channel></rss>`, "https://x.example/feed", "application/rss+xml")],
+      ["atom entries", () => extractStructuredJobs(`<feed xmlns="http://www.w3.org/2005/Atom">${"<entry><link ".repeat(40_000)}</feed>`, "https://x.example/f", "application/atom+xml")],
+      ["chrome", () => removeElements("<nav>".repeat(40_000) + "<p>text</p>", "header|nav|footer|aside|form|dialog")],
+      ["main", () => mainContentHtml(`<body>${"<main><aside>".repeat(40_000)}</body>`)],
+      ["closed items", () => extractStructuredJobs(`<rss><channel>${"<item><title><title></item>".repeat(40_000)}</channel></rss>`, "https://x.example/feed", "application/rss+xml")],
+    ];
+    for (const [name, run] of cases) {
+      const started = Date.now();
+      run();
+      const ms = Date.now() - started;
+      assert.ok(ms < 2_000, `${name} took ${ms} ms`);
+    }
+  });
+
+  test("L1: real chrome blocks are still removed", async () => {
+    const { removeElements } = await import("../../src/lib/agents/html-extract.ts");
+    assert.equal(removeElements("<NAV class=x>menu</NAV><p>keep</p><footer>f</footer>", "nav|footer").replace(/\s+/g, " ").trim(), "<p>keep</p>");
+  });
+
+  test("L2: same host (ignoring www) or a subdomain of the page host; never the parent or a sibling", () => {
+    const page = "https://careers.example.ng/jobs/";
+    assert.equal(sameSite("https://careers.example.ng/a", page), true);
+    assert.equal(sameSite("https://www.careers.example.ng/a", page), true);
+    assert.equal(sameSite("https://apply.careers.example.ng/a", page), true);
+    assert.equal(sameSite("https://example.ng/a", page), false, "parent domain");
+    assert.equal(sameSite("https://evil.example.ng/a", page), false, "sibling subdomain");
+    assert.equal(sameSite("https://careers.example.ng.evil.example/a", page), false);
+  });
+});

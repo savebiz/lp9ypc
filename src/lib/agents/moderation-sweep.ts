@@ -5,7 +5,13 @@
  *
  * - allow → visible, needs_review false;  hold → held (a manager decides).
  * - Still unavailable → visible posts stay as they are (and stay flagged);
- *   stuck 'pending' posts are published with needs_review = true (fail open).
+ *   stuck 'pending' NEW posts are published with needs_review = true (fail
+ *   open) only for a brief outage. Edited posts (edited_at set), posts the
+ *   route already kept hidden (pending + needs_review) and quota/billing
+ *   errors FAIL CLOSED: they stay 'pending' (hidden) and are held for a
+ *   manager after a day (security review M1).
+ * - Updates match the status AND edited_at we read, so neither a human
+ *   decision nor a newer edit made meanwhile is ever overwritten (H1).
  * - Updates are conditional on the status we read, so a human decision made
  *   in the meantime is never overwritten.
  * - Every decision is written to moderation_log (actor_type 'agent').
@@ -31,6 +37,8 @@ interface SweepPost {
   title?: string;
   body: string;
   status: string;
+  needs_review: boolean;
+  edited_at: string | null;
   created_at: string;
 }
 
@@ -45,8 +53,8 @@ export interface SweepResult {
 async function loadCandidates(admin: SupabaseClient): Promise<SweepPost[] | null> {
   const cutoff = new Date(Date.now() - PENDING_GRACE_MS).toISOString();
   const tables = [
-    { kind: "thread" as const, table: "threads", cols: "id, community_id, title, body, status, created_at" },
-    { kind: "reply" as const, table: "replies", cols: "id, community_id, body, status, created_at" },
+    { kind: "thread" as const, table: "threads", cols: "id, community_id, title, body, status, needs_review, edited_at, created_at" },
+    { kind: "reply" as const, table: "replies", cols: "id, community_id, body, status, needs_review, edited_at, created_at" },
   ];
   const found = new Map<string, SweepPost>();
   for (const t of tables) {
@@ -110,11 +118,34 @@ export async function runModerationSweep(admin: SupabaseClient, opts: { deadline
       let action: "allow" | "hold" | "flag";
       if (result.source === "unavailable") {
         const ageMs = Date.now() - new Date(post.created_at).getTime();
-        if (post.status !== "pending" && ageMs < UNCHECKED_HOLD_AFTER_MS) {
+        const oldEnough = ageMs >= UNCHECKED_HOLD_AFTER_MS;
+        if (post.status === "pending") {
+          const failClosed = post.needs_review || post.edited_at !== null || result.unavailableKind === "quota";
+          if (failClosed && !oldEnough) {
+            if (post.needs_review) {
+              counts.unavailable++;
+              return; // already hidden and flagged; try again next sweep
+            }
+            update = { needs_review: true };
+            action = "flag";
+          } else if (failClosed) {
+            update = {
+              status: "held",
+              needs_review: false,
+              moderated_by: "agent",
+              moderation_reason: "Couldn't be checked automatically for over a day, so it's waiting for a manager.",
+              moderation_categories: ["other"],
+            };
+            action = "hold";
+          } else {
+            // Brand-new post, brief outage: approved fail-open behaviour.
+            update = { status: "visible", needs_review: true };
+            action = "flag";
+          }
+        } else if (!oldEnough) {
           counts.unavailable++;
           return;
-        }
-        if (post.status !== "pending") {
+        } else {
           // Still unchecked after a day: stop showing it until a human looks.
           update = {
             status: "held",
@@ -124,9 +155,6 @@ export async function runModerationSweep(admin: SupabaseClient, opts: { deadline
             moderation_categories: ["other"],
           };
           action = "hold";
-        } else {
-          update = { status: "visible", needs_review: true };
-          action = "flag";
         }
       } else if (result.decision === "hold") {
         update = {
@@ -147,6 +175,7 @@ export async function runModerationSweep(admin: SupabaseClient, opts: { deadline
         .update(update)
         .eq("id", post.id)
         .eq("status", post.status)
+        .filter("edited_at", post.edited_at === null ? "is" : "eq", post.edited_at === null ? null : post.edited_at)
         .select("id");
       if (error) {
         counts.errors++;
@@ -171,7 +200,9 @@ export async function runModerationSweep(admin: SupabaseClient, opts: { deadline
         action,
         reason:
           action === "flag"
-            ? "Published after the automatic check stayed unavailable; still needs review."
+            ? update.status === "visible"
+              ? "Published after the automatic check stayed unavailable; still needs review."
+              : "Kept hidden: the automatic check is still unavailable; needs review."
             : (result.reason || (action === "allow" ? "Re-checked by the moderation assistant." : "")).slice(0, 500) || null,
       });
       if (logError) console.error(`[moderation-sweep] log insert failed (${logError.code ?? "unknown"})`);

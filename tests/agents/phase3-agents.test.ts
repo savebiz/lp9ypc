@@ -139,6 +139,9 @@ function fakeAdmin(handler: (op: Op) => { data?: unknown; error?: { code?: strin
         select: () => ((op.action ??= "select"), b),
         eq: (k: string, v: unknown) => (op.filters.push(["eq", k, v]), b),
         in: (k: string, v: unknown) => (op.filters.push(["in", k, v]), b),
+        is: (k: string, v: unknown) => (op.filters.push(["is", k, v]), b),
+        lt: (k: string, v: unknown) => (op.filters.push(["lt", k, v]), b),
+        filter: (k: string, operator: string, v: unknown) => (op.filters.push([operator, k, v]), b),
         order: () => b,
         limit: () => b,
         then: (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) => {
@@ -154,7 +157,7 @@ function fakeAdmin(handler: (op: Op) => { data?: unknown; error?: { code?: strin
 }
 
 describe("runPostModeration (background check)", () => {
-  const job = { kind: "thread" as const, id: "t-1", communityId: "c-1", communityName: "Tech", title: "Hello", body: "Any tips for a first PM job?" };
+  const job = { kind: "thread" as const, id: "t-1", communityId: "c-1", communityName: "Tech", title: "Hello", body: "Any tips for a first PM job?", savedAt: null };
 
   test("allow → visible, only while still pending, logged; moderation asks for 1024 output tokens", async () => {
     process.env.GEMINI_API_KEY = "k";
@@ -165,7 +168,7 @@ describe("runPostModeration (background check)", () => {
     assert.equal(JSON.parse(String(calls[0].init.body)).generationConfig.maxOutputTokens, 1024);
     const update = ops.find((o) => o.action === "update")!;
     assert.equal(update.table, "threads");
-    assert.deepEqual(update.filters, [["eq", "id", "t-1"], ["eq", "status", "pending"]]);
+    assert.deepEqual(update.filters, [["eq", "id", "t-1"], ["eq", "status", "pending"], ["is", "edited_at", null]]);
     assert.equal((update.payload as { status: string }).status, "visible");
     const log = ops.find((o) => o.table === "moderation_log")!;
     assert.equal((log.payload as { action: string }).action, "allow");
@@ -184,17 +187,63 @@ describe("runPostModeration (background check)", () => {
     });
   });
 
-  test("AI unavailable (quota) → visible + needs_review, logged as a system flag", async () => {
+  test("M1: quota error → FAIL CLOSED: stays pending (no status change) + needs_review, logged as a flag", async () => {
     process.env.GEMINI_API_KEY = "k";
     stubFetch(() => raw(QUOTA_BODY, 429));
     const { ops, admin } = fakeAdmin((op) => (op.action === "update" ? { data: [{ id: "t-1" }] } : {}));
     const status = await runPostModeration(admin, job);
-    assert.equal(status, "visible");
-    assert.equal((ops.find((o) => o.action === "update")!.payload as { needs_review: boolean }).needs_review, true);
+    assert.equal(status, "pending");
+    const payload = ops.find((o) => o.action === "update")!.payload as Record<string, unknown>;
+    assert.deepEqual(payload, { needs_review: true, moderated_by: null }, "status is not touched, so it stays 'pending'");
     const log = ops.find((o) => o.table === "moderation_log")!.payload as { action: string; actor_type: string; reason: string };
     assert.equal(log.action, "flag");
     assert.equal(log.actor_type, "system");
+    assert.match(log.reason, /^Hidden until it can be checked/);
     assert.match(log.reason, /quota/i);
+  });
+
+  test("M1: edit + AI unavailable (503) → stays pending + needs_review", async () => {
+    process.env.GEMINI_API_KEY = "k";
+    stubFetch(() => raw(OVERLOADED_BODY, 503));
+    const { ops, admin } = fakeAdmin((op) => (op.action === "update" ? { data: [{ id: "t-1" }] } : {}));
+    const savedAt = "2026-10-10T09:00:00.000Z";
+    const status = await runPostModeration(admin, { ...job, savedAt, isEdit: true }, { timeoutMs: 3000 });
+    assert.equal(status, "pending");
+    const update = ops.find((o) => o.action === "update")!;
+    assert.deepEqual(update.payload, { needs_review: true, moderated_by: null });
+    assert.deepEqual(update.filters.at(-1), ["eq", "edited_at", savedAt]);
+  });
+
+  test("new post + brief outage (503) still fails OPEN: visible + needs_review (Phase 2 decision)", async () => {
+    process.env.GEMINI_API_KEY = "k";
+    stubFetch(() => raw(OVERLOADED_BODY, 503));
+    const { ops, admin } = fakeAdmin((op) => (op.action === "update" ? { data: [{ id: "t-1" }] } : {}));
+    const status = await runPostModeration(admin, job, { timeoutMs: 3000 });
+    assert.equal(status, "visible");
+    const payload = ops.find((o) => o.action === "update")!.payload as { status: string; needs_review: boolean };
+    assert.equal(payload.status, "visible");
+    assert.equal(payload.needs_review, true);
+    const log = ops.find((o) => o.table === "moderation_log")!.payload as { reason: string };
+    assert.match(log.reason, /^Published without an automatic check/);
+  });
+
+  test("H1: a stale verdict (author edited during the check) changes nothing", async () => {
+    process.env.GEMINI_API_KEY = "k";
+    stubFetch(() => geminiJson({ decision: "allow", categories: [], reason: "" }));
+    // The row's edited_at is now newer than the savedAt this check was for, so the conditional update matches 0 rows.
+    const rowEditedAt = "2026-10-10T09:05:00.000Z";
+    const { ops, admin } = fakeAdmin((op) => {
+      if (op.action !== "update") return {};
+      const f = op.filters.find((x) => x[1] === "edited_at")!;
+      const matches = f[0] === "eq" ? f[2] === rowEditedAt : rowEditedAt === null;
+      return { data: matches ? [{ id: "t-1" }] : [] };
+    });
+    const status = await runPostModeration(admin, { ...job, savedAt: "2026-10-10T09:00:00.000Z", isEdit: true });
+    assert.equal(status, "pending");
+    assert.equal(ops.some((o) => o.table === "moderation_log"), false, "nothing logged for a stale verdict");
+    // And a brand-new-post check whose row has since been edited is ignored too (IS NULL no longer matches).
+    const again = await runPostModeration(admin, job);
+    assert.equal(again, "pending");
   });
 
   test("a manager acted first (row no longer pending) → nothing applied, nothing logged", async () => {
@@ -317,5 +366,51 @@ describe("runJobSource", () => {
     assert.equal(r.status, "empty");
     assert.equal(lastSourceUpdate(ops).last_error, "No job listings found on this page.");
     assert.equal(lastSourceUpdate(ops).last_status, "empty");
+  });
+});
+
+// ── Moderation sweep: clears fail-closed posts once the AI is back (M1, H1). ──
+import { runModerationSweep } from "../../src/lib/agents/moderation-sweep.ts";
+
+describe("runModerationSweep with fail-closed posts", () => {
+  const old = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const hiddenEdit = { id: "t-9", community_id: "c-1", title: "T", body: "Edited text", status: "pending", needs_review: true, edited_at: "2026-10-10T09:00:00.000Z", created_at: old };
+
+  function sweepAdmin(rows: Record<string, unknown>[]) {
+    return fakeAdmin((op) => {
+      if (op.table === "threads" && op.action === "select") return { data: rows };
+      if (op.table === "replies" && op.action === "select") return { data: [] };
+      if (op.table === "communities") return { data: [{ id: "c-1", name: "Tech" }] };
+      if (op.action === "update") return { data: [{ id: "t-9" }] };
+      return {};
+    });
+  }
+
+  test("pending + needs_review stays hidden while the AI is still unavailable (quota)", async () => {
+    process.env.GEMINI_API_KEY = "k";
+    stubFetch(() => raw(QUOTA_BODY, 429));
+    const { ops, admin } = sweepAdmin([hiddenEdit]);
+    const r = await runModerationSweep(admin, { deadline: Date.now() + 55_000 });
+    assert.equal(r.status, "ok");
+    assert.equal(ops.some((o) => o.action === "update"), false, "not published");
+  });
+
+  test("pending + needs_review is published once the AI allows it, matching the edited_at it checked", async () => {
+    process.env.GEMINI_API_KEY = "k";
+    stubFetch(() => geminiJson({ decision: "allow", categories: [], reason: "" }));
+    const { ops, admin } = sweepAdmin([hiddenEdit]);
+    await runModerationSweep(admin, { deadline: Date.now() + 55_000 });
+    const update = ops.find((o) => o.action === "update")!;
+    assert.equal((update.payload as { status: string }).status, "visible");
+    assert.deepEqual(update.filters, [["eq", "id", "t-9"], ["eq", "status", "pending"], ["eq", "edited_at", hiddenEdit.edited_at]]);
+  });
+
+  test("a stuck pending EDIT during a brief outage is flagged but NOT published", async () => {
+    process.env.GEMINI_API_KEY = "k";
+    stubFetch(() => raw(OVERLOADED_BODY, 503));
+    const { ops, admin } = sweepAdmin([{ ...hiddenEdit, needs_review: false }]);
+    await runModerationSweep(admin, { deadline: Date.now() + 55_000 });
+    const update = ops.find((o) => o.action === "update")!;
+    assert.deepEqual(update.payload, { needs_review: true });
   });
 });
