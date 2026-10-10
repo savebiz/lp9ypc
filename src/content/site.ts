@@ -8,7 +8,7 @@ export const SITE = {
   name: "LP9 YPC",
   fullName: "Young Professionals Club",
   parent: "RCCG Lagos Province 9",
-  contactEmail: "info@lp9ypc.org",
+  contactEmail: "lp9ypc@gmail.com",
 };
 
 export const HERO = {
