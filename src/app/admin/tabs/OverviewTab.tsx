@@ -1,18 +1,28 @@
 "use client";
 
+import { ChevronRight } from "lucide-react";
 import { isExpired } from "@/lib/utils";
 import type { CareerPath, Job, Profile } from "@/types";
+import type { Tab } from "../AdminClient";
 import { Stat } from "./shared";
 import styles from "../admin.module.css";
 
-export default function OverviewTab({ jobs, members, careerPaths, memberPaths, pendingJobs, heldPosts, onGoTo }: {
+export interface OverviewQueues {
+  pendingJobs: number;
+  heldPosts: number;
+  openReports: number;
+  careerIdeas: number;
+  sourceProblems: number;
+  testAccounts: number;
+}
+
+export default function OverviewTab({ jobs, members, careerPaths, memberPaths, queues, onGoTo }: {
   jobs: Job[];
   members: Profile[];
   careerPaths: CareerPath[];
   memberPaths: { member_id: string; career_path_id: string }[];
-  pendingJobs: number;
-  heldPosts: number;
-  onGoTo: (tab: "review" | "moderation") => void;
+  queues: OverviewQueues;
+  onGoTo: (tab: Tab) => void;
 }) {
   const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const newThisWeek = members.filter((m) => new Date(m.created_at).getTime() > weekAgo).length;
@@ -26,6 +36,19 @@ export default function OverviewTab({ jobs, members, careerPaths, memberPaths, p
   const withPath = new Set(memberPaths.map((l) => l.member_id));
   const noPath = members.filter((m) => !withPath.has(m.id)).length;
 
+  // Every queue, with a direct link. Shown even at zero so admins know where things live.
+  const queueLinks: { n: number; label: string; tab: Tab; none: string }[] = [
+    { n: queues.pendingJobs, label: "Jobs waiting for review", tab: "review", none: "No jobs waiting" },
+    { n: queues.heldPosts, label: "Posts needing review", tab: "moderation", none: "No posts waiting" },
+    { n: queues.openReports, label: "Open reports from members", tab: "moderation", none: "No open reports" },
+    { n: queues.careerIdeas, label: "Career path ideas to review", tab: "ideas", none: "No new ideas" },
+    { n: queues.sourceProblems, label: "Job sources with a problem", tab: "sources", none: "All job sources fine" },
+    ...(queues.testAccounts > 0
+      ? [{ n: queues.testAccounts, label: "Test accounts to delete before launch", tab: "members" as Tab, none: "" }]
+      : []),
+  ];
+  const waiting = queueLinks.reduce((sum, q) => sum + q.n, 0);
+
   return (
     <div className="stack-lg">
       <div className="stats">
@@ -33,9 +56,26 @@ export default function OverviewTab({ jobs, members, careerPaths, memberPaths, p
         <Stat n={newThisWeek} label="Joined in the last 7 days" />
         <Stat n={activeJobs} label="Open jobs" />
         <Stat n={optedIn} label="Opted in to updates" />
-        <ActionStat n={pendingJobs} label="Jobs awaiting review" cta="Review jobs" onClick={() => onGoTo("review")} />
-        <ActionStat n={heldPosts} label="Posts needing review" cta="Check posts" onClick={() => onGoTo("moderation")} />
       </div>
+
+      <section className="card" aria-labelledby="queues-h">
+        <h2 id="queues-h" className="title-sm" style={{ marginBottom: 4 }}>Needs your attention</h2>
+        <p className="small muted" style={{ marginBottom: 12 }}>
+          {waiting === 0 ? "You're all caught up." : "Tap a line to go straight to it."}
+        </p>
+        <ul className={styles.queueList}>
+          {queueLinks.map((q) => (
+            <li key={q.label}>
+              <button type="button" className={`${styles.queueLink}${q.n > 0 ? ` ${styles.queueLinkOn}` : ""}`} onClick={() => onGoTo(q.tab)}>
+                <span className={styles.queueCount}>{q.n}</span>
+                <span className={styles.queueLabel}>{q.n > 0 || !q.none ? q.label : q.none}</span>
+                <ChevronRight size={18} aria-hidden="true" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+
       <section className="card" aria-labelledby="bypath-h">
         <h2 id="bypath-h" className="title-sm" style={{ marginBottom: 4 }}>Registrations by career path</h2>
         <p className="small muted" style={{ marginBottom: 16 }}>Members can choose more than one path.</p>
@@ -54,19 +94,6 @@ export default function OverviewTab({ jobs, members, careerPaths, memberPaths, p
           </div>
         )}
       </section>
-    </div>
-  );
-}
-
-/** A stat that needs attention: shows a link-style button to the right tab when there's work to do. */
-function ActionStat({ n, label, cta, onClick }: { n: number; label: string; cta: string; onClick: () => void }) {
-  return (
-    <div className={`stat${n > 0 ? ` ${styles.statAttention}` : ""}`}>
-      <div className="num">{n}</div>
-      <div className="lbl">{label}</div>
-      {n > 0 && (
-        <button type="button" className="btn-link small" onClick={onClick} style={{ paddingLeft: 0 }}>{cta}</button>
-      )}
     </div>
   );
 }

@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, Loader2, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { ExternalLink, Lightbulb, Loader2, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { hostnameOf, safeHttpUrl } from "@/lib/utils";
 import type { JobSource } from "@/types";
-import { FieldError, formatDateTime, friendlyDbError, postJson, type TabActions } from "./shared";
+import { SUGGESTED_SOURCES } from "@/lib/agents/suggested-sources";
+import { FieldError, formatDateTime, friendlyDbError, plainSourceError, postJson, writeProblem, type TabActions } from "./shared";
 import styles from "../admin.module.css";
 
 const STATUS_LABELS: Record<NonNullable<JobSource["last_status"]>, { text: string; cls: string }> = {
@@ -17,6 +18,9 @@ const STATUS_LABELS: Record<NonNullable<JobSource["last_status"]>, { text: strin
 
 interface SourceForm { name: string; url: string; notes: string; is_active: boolean }
 const EMPTY: SourceForm = { name: "", url: "", notes: "", is_active: true };
+
+/** Shape of SUGGESTED_SOURCES (src/lib/agents/suggested-sources.ts, docs/phase-3-contracts.md). */
+interface SuggestedSource { name: string; url: string; why: string; method: "structured" | "ai" }
 
 interface RunResult { status: "ok" | "empty" | "blocked" | "error"; found: number; inserted: number; message: string }
 
@@ -30,6 +34,9 @@ export default function JobSourcesTab({ sources, adminId, onError, onSuccess, on
   const [errors, setErrors] = useState<Partial<Record<keyof SourceForm, string>>>({});
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState<string | null>(null);
+  const [adding, setAdding] = useState<string | null>(null);
+  const knownUrls = new Set(sources.map((s) => normaliseUrl(s.url)));
+  const suggestions = (SUGGESTED_SOURCES as SuggestedSource[]).filter((s: SuggestedSource) => !knownUrls.has(normaliseUrl(s.url)));
 
   function openNew() {
     setEditing(null); setForm(EMPTY); setErrors({}); setShowForm(true);
@@ -61,14 +68,13 @@ export default function JobSourcesTab({ sources, adminId, onError, onSuccess, on
     setSaving(true); onError("");
     const supabase = createClient();
     const payload = { name: form.name.trim().slice(0, 120), url: url!, notes: form.notes.trim() || null, is_active: form.is_active };
-    const { error } = editing
-      ? await supabase.from("job_sources").update(payload).eq("id", editing.id)
-      : await supabase.from("job_sources").insert({ ...payload, created_by: adminId || null });
+    const res = editing
+      ? await supabase.from("job_sources").update(payload).eq("id", editing.id).select("id")
+      : await supabase.from("job_sources").insert({ ...payload, created_by: adminId || null }).select("id");
     setSaving(false);
-    if (error) {
-      if (error.code === "23505") return onError("That web address is already in your list of job sources.");
-      return onError(friendlyDbError("save the job source", error));
-    }
+    if (res.error?.code === "23505") return onError("That web address is already in your list of job sources.");
+    const problem = writeProblem("save the job source", res);
+    if (problem) return onError(problem);
     onSuccess(editing ? "Job source saved." : "Job source added. The job finder will check it on its next daily run, or use Run now.");
     setShowForm(false); setEditing(null);
     onChanged();
@@ -77,9 +83,23 @@ export default function JobSourcesTab({ sources, adminId, onError, onSuccess, on
   async function remove(s: JobSource) {
     if (!confirm(`Remove "${s.name}" from your job sources? Jobs already found from it stay where they are.`)) return;
     onError("");
-    const { error } = await createClient().from("job_sources").delete().eq("id", s.id);
-    if (error) return onError(friendlyDbError("remove the job source", error));
+    const problem = writeProblem("remove the job source", await createClient().from("job_sources").delete().eq("id", s.id).select("id"));
+    if (problem) return onError(problem);
     onSuccess(`Removed "${s.name}".`);
+    onChanged();
+  }
+
+  async function addSuggested(s: SuggestedSource) {
+    const url = safeHttpUrl(s.url);
+    if (!url) return onError(`"${s.name}" doesn't have a usable web address.`);
+    setAdding(s.url); onError("");
+    const { error } = await createClient().from("job_sources").insert({
+      name: s.name.slice(0, 120), url, notes: s.why.slice(0, 1000) || null, is_active: true, created_by: adminId || null,
+    });
+    setAdding(null);
+    if (error?.code === "23505") return onError(`"${s.name}" is already in your list of job sources.`);
+    if (error) return onError(friendlyDbError("add the job source", error));
+    onSuccess(`Added "${s.name}". The job finder will check it on its next daily run, or use Run now.`);
     onChanged();
   }
 
@@ -185,7 +205,7 @@ export default function JobSourcesTab({ sources, adminId, onError, onSuccess, on
                       </>
                     ) : "Not checked yet"}
                   </p>
-                  {s.last_error && <p className={`small ${styles.warn}`} style={{ marginTop: 2 }}>Last problem: {s.last_error}</p>}
+                  <SourceProblem source={s} />
                   {isRunning && (
                     <p className="small ink-2 row" role="status" style={{ marginTop: 6, gap: 6 }}>
                       <Loader2 size={14} className="spin" aria-hidden="true" /> Checking the site — this can take up to a minute…
@@ -204,6 +224,70 @@ export default function JobSourcesTab({ sources, adminId, onError, onSuccess, on
             );
           })}
         </div>
+      )}
+
+      <section className="stack" aria-labelledby="suggested-h">
+        <div>
+          <h2 id="suggested-h" className="title-sm row" style={{ gap: 8 }}><Lightbulb size={20} aria-hidden="true" /> Suggested sources</h2>
+          <p className="small muted" style={{ marginTop: 4 }}>
+            Job pages we&apos;ve checked: the site allows us to read them and they loaded when we tried. Add the ones that suit the club.
+          </p>
+        </div>
+        {suggestions.length === 0 ? (
+          <div className="empty">
+            {SUGGESTED_SOURCES.length === 0 ? "No suggestions yet." : "You've added every suggested source."}
+          </div>
+        ) : (
+          <div className="list">
+            {suggestions.map((s: SuggestedSource) => {
+              const href = safeHttpUrl(s.url);
+              return (
+                <div key={s.url} className={`list-item ${styles.stackOnMobile}`}>
+                  <div className="grow">
+                    <div className="row-wrap" style={{ gap: 8 }}>
+                      <strong>{s.name}</strong>
+                      <span className="status off">{s.method === "structured" ? "Reads the site's job data" : "Uses the AI reader"}</span>
+                    </div>
+                    {href && (
+                      <a href={href} target="_blank" rel="noopener noreferrer" className={`small ${styles.inlineLink}`}>
+                        {hostnameOf(href)} <ExternalLink size={14} aria-hidden="true" /><span className="sr-only"> (opens in a new tab)</span>
+                      </a>
+                    )}
+                    <p className="small ink-2" style={{ marginTop: 2 }}>{s.why}</p>
+                  </div>
+                  <div className="actions">
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => addSuggested(s)} disabled={!!adding || !href}
+                      aria-label={`Add ${s.name} as a job source`}>
+                      {adding === s.url ? <Loader2 size={16} className="spin" aria-hidden="true" /> : <Plus size={16} aria-hidden="true" />} Add this source
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+/** Compare web addresses ignoring case, a trailing slash and http vs https. */
+function normaliseUrl(u: string): string {
+  return u.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+}
+
+/** The last problem in plain English, with the technical text tucked away for the tech team. */
+function SourceProblem({ source }: { source: JobSource }) {
+  const problem = plainSourceError(source.last_status, source.last_error);
+  if (!problem) return null;
+  return (
+    <div style={{ marginTop: 2 }}>
+      <p className={`small ${styles.warn}`}>Last problem: {problem.text}</p>
+      {problem.technical && (
+        <details className={styles.details} style={{ marginTop: 0 }}>
+          <summary className="small">Details for the tech team</summary>
+          <p className="small muted" style={{ overflowWrap: "anywhere" }}>{problem.technical}</p>
+        </details>
       )}
     </div>
   );

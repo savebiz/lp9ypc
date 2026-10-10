@@ -6,8 +6,8 @@ import type { CareerPath, Job } from "@/types";
 
 export const metadata = { title: "Jobs · LP9 YPC" };
 
-export default async function JobsPage({ searchParams }: { searchParams: Promise<{ path?: string }> }) {
-  const { path } = await searchParams;
+export default async function JobsPage({ searchParams }: { searchParams: Promise<{ path?: string; q?: string }> }) {
+  const { path, q } = await searchParams;
   const { supabase, user, userName, isAdmin } = await getSession();
 
   const [jobsRes, pathsRes, savedRes] = await Promise.all([
@@ -37,6 +37,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
           userId={user?.id ?? null}
           initialSavedIds={savedIds}
           initialPath={path ?? null}
+          initialQuery={typeof q === "string" ? q.slice(0, 100) : ""}
         />
       </main>
       <Footer />

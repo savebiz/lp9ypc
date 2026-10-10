@@ -12,8 +12,9 @@ import type {
 export const metadata = { title: "Admin · LP9 YPC" };
 
 // Moderation notes are hidden from select by column grants; never select "*" on posts.
-const THREAD_COLS = "id, community_id, author_id, title, body, status, needs_review, is_pinned, is_locked, reply_count, last_activity_at, created_at, updated_at";
-const REPLY_COLS = "id, thread_id, community_id, author_id, body, status, needs_review, created_at, updated_at";
+// Phase 3 adds like_count/edited_at (threads) and parent_id/depth/like_count/edited_at (replies).
+const THREAD_COLS = "id, community_id, author_id, title, body, status, needs_review, is_pinned, is_locked, reply_count, last_activity_at, created_at, updated_at, like_count, edited_at";
+const REPLY_COLS = "id, thread_id, community_id, author_id, body, status, needs_review, created_at, updated_at, parent_id, depth, like_count, edited_at";
 // The review queue: held posts, plus posts published while the automatic check was down.
 const NEEDS_REVIEW = "status.eq.held,and(status.eq.visible,needs_review.eq.true)";
 
@@ -73,11 +74,20 @@ export default async function AdminPage() {
     ? await supabase.from("threads").select(THREAD_COLS).in("id", [...new Set(missingThreadIds)])
     : { data: [], error: null };
 
-  const loadError = [jobsRes, membersRes, pathsRes, annRes, linksRes].some((r) => r.error);
-  const phase2Error = [
-    sourcesRes, communitiesRes, communityMembersRes, overviewRes, heldThreadsRes, heldRepliesRes,
-    reportsRes, candidatesRes, runsRes, relThreadsRes, relRepliesRes, extraThreadsRes,
-  ].some((r) => r.error);
+  // Which sections failed (logged with the error code only — never row data).
+  const sections: [string, { error: { code?: string } | null }][] = [
+    ["jobs", jobsRes], ["members", membersRes], ["career paths", pathsRes], ["news & events", annRes],
+    ["members' career paths", linksRes], ["job sources", sourcesRes], ["communities", communitiesRes],
+    ["community members", communityMembersRes], ["community counts", overviewRes],
+    ["held discussions", heldThreadsRes], ["held replies", heldRepliesRes], ["reports", reportsRes],
+    ["career path ideas", candidatesRes], ["assistant runs", runsRes], ["reported discussions", relThreadsRes],
+    ["reported replies", relRepliesRes], ["related discussions", extraThreadsRes],
+  ];
+  const failed = sections.filter(([, r]) => r.error);
+  for (const [name, r] of failed) console.error(`[admin] ${name} failed to load (${r.error?.code ?? "unknown"})`);
+  const loadError = sections.slice(0, 5).some(([, r]) => r.error);
+  const phase2Error = !loadError && failed.length > 0;
+  const failedNames = failed.map(([n]) => n).join(", ");
 
   const data: AdminData = {
     adminId: user.id,
@@ -110,13 +120,12 @@ export default async function AdminPage() {
         </div>
         {loadError && (
           <div className="alert alert-error" role="alert" style={{ marginBottom: 16 }}>
-            Some data didn&apos;t load. Refresh the page; if it keeps happening, tell the tech team.
+            Some data didn&apos;t load ({failedNames}). Refresh the page; if it keeps happening, tell the tech team.
           </div>
         )}
         {!loadError && phase2Error && (
           <div className="alert alert-info" role="status" style={{ marginBottom: 16 }}>
-            Some newer sections (job sources, review queue, communities, moderation, career ideas or agents) couldn&apos;t load.
-            If the latest update hasn&apos;t been installed yet, that&apos;s expected — tell the tech team.
+            Some sections couldn&apos;t load: {failedNames}. Refresh the page; if it keeps happening, tell the tech team.
           </div>
         )}
         <AdminClient data={data} />

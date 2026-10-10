@@ -8,7 +8,7 @@ import {
 } from "@/lib/utils";
 import type { CareerPath, Job, JobSource } from "@/types";
 import JobEditor from "./JobEditor";
-import { friendlyDbError, type TabActions } from "./shared";
+import { writeProblem, type TabActions } from "./shared";
 import styles from "../admin.module.css";
 
 /**
@@ -28,9 +28,10 @@ export default function ReviewQueueTab({ pending, rejected, careerPaths, jobSour
       return;
     }
     setBusy(j.id); onError("");
-    const { error } = await createClient().from("jobs").update({ review_status: "approved", is_active: true }).eq("id", j.id);
+    const problem = writeProblem("approve the job",
+      await createClient().from("jobs").update({ review_status: "approved", is_active: true }).eq("id", j.id).select("id"));
     setBusy(null);
-    if (error) return onError(friendlyDbError("approve the job", error));
+    if (problem) return onError(problem);
     onSuccess(`Approved — "${j.title}" is now live for members.`);
     onChanged();
   }
@@ -38,18 +39,20 @@ export default function ReviewQueueTab({ pending, rejected, careerPaths, jobSour
   async function reject(j: Job) {
     if (!confirm(`Reject "${j.title}"? It won't be shown to members.`)) return;
     setBusy(j.id); onError("");
-    const { error } = await createClient().from("jobs").update({ review_status: "rejected", is_active: false }).eq("id", j.id);
+    const problem = writeProblem("reject the job",
+      await createClient().from("jobs").update({ review_status: "rejected", is_active: false }).eq("id", j.id).select("id"));
     setBusy(null);
-    if (error) return onError(friendlyDbError("reject the job", error));
+    if (problem) return onError(problem);
     onSuccess(`Rejected "${j.title}".`);
     onChanged();
   }
 
   async function reconsider(j: Job) {
     setBusy(j.id); onError("");
-    const { error } = await createClient().from("jobs").update({ review_status: "pending", is_active: false }).eq("id", j.id);
+    const problem = writeProblem("move the job back to review",
+      await createClient().from("jobs").update({ review_status: "pending", is_active: false }).eq("id", j.id).select("id"));
     setBusy(null);
-    if (error) return onError(friendlyDbError("move the job back to review", error));
+    if (problem) return onError(problem);
     onSuccess(`"${j.title}" is back in the review queue.`);
     onChanged();
   }

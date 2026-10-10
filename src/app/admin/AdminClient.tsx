@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { useRouter } from "next/navigation";
 import { CircleAlert, CircleCheck, Loader2, X } from "lucide-react";
 import type { CareerPath } from "@/types";
-import type { AdminData } from "./tabs/shared";
+import { isTestAccount, type AdminData } from "./tabs/shared";
 import OverviewTab from "./tabs/OverviewTab";
 import JobsTab from "./tabs/JobsTab";
 import ReviewQueueTab from "./tabs/ReviewQueueTab";
@@ -17,7 +17,7 @@ import AgentsTab from "./tabs/AgentsTab";
 import AnnouncementsTab from "./tabs/AnnouncementsTab";
 import styles from "./admin.module.css";
 
-type Tab =
+export type Tab =
   | "overview" | "jobs" | "review" | "sources" | "members" | "communities"
   | "moderation" | "ideas" | "agents" | "announcements";
 
@@ -115,7 +115,15 @@ export default function AdminClient({ data }: { data: AdminData }) {
         {tab === "overview" && (
           <OverviewTab
             jobs={data.jobs} members={members} careerPaths={careerPaths} memberPaths={memberPaths}
-            pendingJobs={pendingJobs.length} heldPosts={heldCount} onGoTo={(t) => select(t)}
+            queues={{
+              pendingJobs: pendingJobs.length,
+              heldPosts: heldCount,
+              openReports: data.openReports.length,
+              careerIdeas: data.candidates.length,
+              sourceProblems: data.jobSources.filter((s) => s.is_active && (s.last_status === "error" || s.last_status === "blocked")).length,
+              testAccounts: members.filter((m) => isTestAccount(m.email)).length,
+            }}
+            onGoTo={(t) => select(t, true)}
           />
         )}
         {tab === "jobs" && (
@@ -126,7 +134,7 @@ export default function AdminClient({ data }: { data: AdminData }) {
             adminId={data.adminId} {...actions} />
         )}
         {tab === "sources" && <JobSourcesTab sources={data.jobSources} adminId={data.adminId} {...actions} />}
-        {tab === "members" && <MembersTab members={members} careerPaths={careerPaths} pathsByMember={pathsByMember} />}
+        {tab === "members" && <MembersTab members={members} careerPaths={careerPaths} pathsByMember={pathsByMember} adminId={data.adminId} {...actions} />}
         {tab === "communities" && (
           <CommunitiesTab communities={data.communities} communityMembers={data.communityMembers}
             communityOverview={data.communityOverview} members={members} adminId={data.adminId} {...actions} />

@@ -161,8 +161,9 @@
 
 /* List rows with a full-width area under the title row (communities). */
 .itemColumn:global(.list-item) { flex-direction: column; align-items: stretch; gap: 0; }
-.itemHead { display: flex; gap: 12px; align-items: flex-start; }
-.itemMain { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+/* Wraps so the buttons drop below the text on phones (globals give .actions width:100% there). */
+.itemHead { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+.itemMain { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
 .itemFull { min-width: 0; }
 .pickItem { flex-wrap: wrap; }
 
@@ -187,3 +188,29 @@
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* Overview: direct links to every queue. */
+.queueList { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.queueLink {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-input);
+  background: var(--white);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+.queueLink:hover { border-color: var(--line-strong); }
+.queueLinkOn { background: var(--cream); color: var(--ink); border-color: var(--line-strong); font-weight: 600; }
+.queueCount { min-width: 2ch; font-variant-numeric: tabular-nums; font-weight: 700; color: var(--ink); }
+.queueLabel { flex: 1; min-width: 0; }
+
+/* Loading skeletons (shared by the admin loading screen). */
+.skel { display: block; background: var(--line); border-radius: var(--r-input); }

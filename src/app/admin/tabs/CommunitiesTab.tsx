@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ExternalLink, Loader2, Pencil, Plus, UserMinus, UserPlus, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Community, CommunityOverview, Profile } from "@/types";
-import { FieldError, SLUG_RE, friendlyDbError, memberNames, slugify, type AdminData, type TabActions } from "./shared";
+import { FieldError, SLUG_RE, memberNames, slugify, writeProblem, type AdminData, type TabActions } from "./shared";
 import styles from "../admin.module.css";
 
 interface CommunityForm {
@@ -79,14 +79,13 @@ export default function CommunitiesTab({ communities, communityMembers, communit
       name: form.name.trim(), slug: form.slug, description: form.description.trim() || null,
       kind: form.kind, is_active: form.is_active,
     };
-    const { error } = editing
-      ? await supabase.from("communities").update(payload).eq("id", editing.id)
-      : await supabase.from("communities").insert({ ...payload, created_by: adminId || null });
+    const res = editing
+      ? await supabase.from("communities").update(payload).eq("id", editing.id).select("id")
+      : await supabase.from("communities").insert({ ...payload, created_by: adminId || null }).select("id");
     setSaving(false);
-    if (error) {
-      if (error.code === "23505") return onError("A community with that name or web address already exists. Choose a different one.");
-      return onError(friendlyDbError("save the community", error));
-    }
+    if (res.error?.code === "23505") return onError("A community with that name or web address already exists. Choose a different one.");
+    const problem = writeProblem("save the community", res);
+    if (problem) return onError(problem);
     onSuccess(editing ? "Community saved." : `Community "${payload.name}" created.`);
     setShowForm(false); setEditing(null);
     onChanged();
@@ -96,10 +95,12 @@ export default function CommunitiesTab({ communities, communityMembers, communit
     onError("");
     const supabase = createClient();
     const existing = (byCommunity.get(c.id) ?? []).find((r) => r.member_id === member.id);
-    const { error } = existing
-      ? await supabase.from("community_members").update({ role: "manager" }).eq("community_id", c.id).eq("member_id", member.id)
-      : await supabase.from("community_members").insert({ community_id: c.id, member_id: member.id, role: "manager" });
-    if (error) return onError(friendlyDbError("add the manager", error));
+    const res = existing
+      ? await supabase.from("community_members").update({ role: "manager" }).eq("community_id", c.id).eq("member_id", member.id).select("member_id")
+      : await supabase.from("community_members").insert({ community_id: c.id, member_id: member.id, role: "manager" }).select("member_id");
+    if (res.error?.code === "23505") return onError(`${names.get(member.id)} is already in ${c.name}. Refresh the page and try again.`);
+    const problem = writeProblem("add the manager", res);
+    if (problem) return onError(problem);
     onSuccess(`${names.get(member.id)} now manages ${c.name}.`);
     setPickerFor(null);
     onChanged();
@@ -109,9 +110,9 @@ export default function CommunitiesTab({ communities, communityMembers, communit
     const name = names.get(memberId) ?? "This member";
     if (!confirm(`Remove ${name} as a manager of ${c.name}? They'll stay in the community as a member.`)) return;
     onError("");
-    const { error } = await createClient().from("community_members").update({ role: "member" })
-      .eq("community_id", c.id).eq("member_id", memberId);
-    if (error) return onError(friendlyDbError("remove the manager", error));
+    const problem = writeProblem("remove the manager", await createClient().from("community_members").update({ role: "member" })
+      .eq("community_id", c.id).eq("member_id", memberId).select("member_id"));
+    if (problem) return onError(problem);
     onSuccess(`${name} is no longer a manager of ${c.name}.`);
     onChanged();
   }
@@ -236,6 +237,7 @@ export default function CommunitiesTab({ communities, communityMembers, communit
                       </button>
                     )}
                   </div>
+                  <MemberList rows={rows} names={names} communityName={c.name} />
                   {pickerFor === c.id && (
                     <ManagerPicker
                       community={c}
@@ -252,6 +254,29 @@ export default function CommunitiesTab({ communities, communityMembers, communit
         </div>
       )}
     </div>
+  );
+}
+
+/** Everyone in the community, managers first. Collapsed so long lists don't swamp the page. */
+function MemberList({ rows, names, communityName }: {
+  rows: AdminData["communityMembers"]; names: Map<string, string>; communityName: string;
+}) {
+  if (rows.length === 0) return <p className="small muted">No members have joined yet.</p>;
+  const sorted = [...rows].sort((a, b) =>
+    (a.role === b.role ? 0 : a.role === "manager" ? -1 : 1) ||
+    (names.get(a.member_id) ?? "").localeCompare(names.get(b.member_id) ?? ""));
+  return (
+    <details className={styles.details}>
+      <summary className="small">See who has joined {communityName} ({rows.length})</summary>
+      <ul className={styles.managerList}>
+        {sorted.map((r) => (
+          <li key={r.member_id}>
+            <span className="small">{names.get(r.member_id) ?? "Unknown member"}</span>
+            {r.role === "manager" && <span className="status admin">Manager</span>}
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 

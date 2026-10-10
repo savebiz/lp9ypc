@@ -5,7 +5,7 @@ import { Check, ExternalLink, Loader2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, hostnameOf, safeHttpUrl } from "@/lib/utils";
 import type { CareerPath, CareerPathCandidate } from "@/types";
-import { friendlyDbError, slugify, type TabActions } from "./shared";
+import { friendlyDbError, slugify, writeProblem, type TabActions } from "./shared";
 import styles from "../admin.module.css";
 
 /**
@@ -20,7 +20,8 @@ export default function CareerIdeasTab({ candidates, careerPaths, adminId, onErr
   async function markReviewed(c: CareerPathCandidate, status: "approved" | "rejected") {
     return createClient().from("career_path_candidates")
       .update({ status, reviewed_by: adminId || null, reviewed_at: new Date().toISOString() })
-      .eq("id", c.id);
+      .eq("id", c.id)
+      .select("id");
   }
 
   async function approve(c: CareerPathCandidate) {
@@ -38,10 +39,10 @@ export default function CareerIdeasTab({ candidates, careerPaths, adminId, onErr
       if (ins.error.code === "23505") return onError(`A career path with the name "${name}" (or the same web address) already exists. Reject this idea instead.`);
       return onError(friendlyDbError("add the career path", ins.error));
     }
-    const { error } = await markReviewed(c, "approved");
+    const problem = writeProblem("mark the idea as approved", await markReviewed(c, "approved"));
     setBusy(null);
-    if (error) {
-      onError(`"${name}" was added as a career path, but we couldn't mark the idea as approved. ${friendlyDbError("update the idea", error)}`);
+    if (problem) {
+      onError(`"${name}" was added as a career path, but the idea is still in this list. ${problem}`);
     } else {
       onSuccess(`"${name}" is now a career path members can choose.`);
     }
@@ -51,9 +52,9 @@ export default function CareerIdeasTab({ candidates, careerPaths, adminId, onErr
   async function reject(c: CareerPathCandidate) {
     if (!confirm(`Reject the idea "${c.name}"?`)) return;
     setBusy(c.id); onError("");
-    const { error } = await markReviewed(c, "rejected");
+    const problem = writeProblem("reject the idea", await markReviewed(c, "rejected"));
     setBusy(null);
-    if (error) return onError(friendlyDbError("reject the idea", error));
+    if (problem) return onError(problem);
     onSuccess(`Rejected "${c.name}".`);
     onChanged();
   }

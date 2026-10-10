@@ -56,6 +56,50 @@ export function friendlyDbError(action: string, error: { code?: string; message?
   return `Couldn't ${action}. Please try again.${error?.message ? ` (Details: ${error.message})` : ""}`;
 }
 
+/**
+ * Checks the result of an update/delete that asked for `.select("id")` back.
+ * Row-level security silently skips rows it won't let you change, so "no
+ * error but no rows" means nothing happened — say so instead of claiming success.
+ */
+export function writeProblem(
+  action: string,
+  res: { error: { code?: string; message?: string } | null; data: unknown[] | null },
+): string | null {
+  if (res.error) return friendlyDbError(action, res.error);
+  if (!res.data || res.data.length === 0) {
+    return `Couldn't ${action}: it may have been changed or removed by someone else. Refresh the page and try again.`;
+  }
+  return null;
+}
+
+/** The exact plain-English sentences the job finder stores in job_sources.last_error (docs/phase-3-contracts.md). */
+const KNOWN_SOURCE_ERRORS = [
+  "Blocked by the site's robots.txt, so we can't read it.",
+  "No job listings found on this page.",
+  "The AI service is busy right now. We'll try again on the next run.",
+  "Gemini needs billing turned on for this key (quota exceeded).",
+  "Couldn't open the page (it may be down or blocking us).",
+];
+
+/** A job source's last problem in plain English (older runs may have stored technical text). */
+export function plainSourceError(status: string | null, error: string | null): { text: string; technical: string | null } | null {
+  if (!error && status !== "blocked" && status !== "empty" && status !== "error") return null;
+  const raw = (error ?? "").trim();
+  if (KNOWN_SOURCE_ERRORS.includes(raw)) return { text: raw, technical: null };
+  const low = raw.toLowerCase();
+  let text: string;
+  if (status === "blocked" || low.includes("robots")) text = KNOWN_SOURCE_ERRORS[0];
+  else if (status === "empty") text = KNOWN_SOURCE_ERRORS[1];
+  else if (low.includes("429") || low.includes("quota") || low.includes("billing")) text = KNOWN_SOURCE_ERRORS[3];
+  else if (/\b(ai|gemini|extraction|model)\b|503|overload|timeout|timed out|unavailable|busy/.test(low)) text = KNOWN_SOURCE_ERRORS[2];
+  else if (/couldn.t open|fetch|network|enotfound|econn|dns|certificate|status [45]\d\d/.test(low)) text = KNOWN_SOURCE_ERRORS[4];
+  else text = "Something went wrong the last time we checked this page. Try Run now; if it keeps failing, tell the tech team.";
+  return { text, technical: raw && raw !== text ? raw.slice(0, 300) : null };
+}
+
+/** Test accounts made during QA use this email domain. */
+export const isTestAccount = (email: string | null | undefined) => !!email && email.toLowerCase().endsWith("@example.test");
+
 type JsonResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 /**

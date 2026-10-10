@@ -5,7 +5,7 @@ import { CalendarDays, ExternalLink, Eye, EyeOff, Loader2, MapPin, Pencil, Plus,
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, hostnameOf, safeHttpUrl } from "@/lib/utils";
 import type { Announcement, AnnouncementScope } from "@/types";
-import { FieldError, formatDateTime, friendlyDbError, isoToLocalInput, localInputToIso, type TabActions } from "./shared";
+import { FieldError, formatDateTime, friendlyDbError, isoToLocalInput, localInputToIso, writeProblem, type TabActions } from "./shared";
 import styles from "../admin.module.css";
 
 export const SCOPE_LABELS: Record<AnnouncementScope, string> = {
@@ -93,11 +93,12 @@ export default function AnnouncementsTab({ announcements, adminId, onError, onSu
       location: form.location.trim() || null,
       link_url: link,
     };
-    const { error } = editing
-      ? await supabase.from("announcements").update(payload).eq("id", editing.id)
-      : await supabase.from("announcements").insert({ ...payload, posted_by: adminId || null });
+    const problem = editing
+      ? writeProblem("save the post", await supabase.from("announcements").update(payload).eq("id", editing.id).select("id"))
+      : await supabase.from("announcements").insert({ ...payload, posted_by: adminId || null })
+          .then(({ error }) => (error ? friendlyDbError("publish the post", error) : null));
     setSaving(false);
-    if (error) return onError(friendlyDbError(editing ? "save the announcement" : "post the announcement", error));
+    if (problem) return onError(problem);
     onSuccess(editing ? "Saved." : form.kind === "event" ? "Event posted." : "Announcement posted.");
     setShowForm(false); setEditing(null); setForm(EMPTY);
     onChanged();
@@ -105,8 +106,9 @@ export default function AnnouncementsTab({ announcements, adminId, onError, onSu
 
   async function toggle(a: Announcement) {
     onError("");
-    const { error } = await createClient().from("announcements").update({ is_active: !a.is_active }).eq("id", a.id);
-    if (error) return onError(`Couldn't update it: ${error.message}`);
+    const problem = writeProblem(a.is_active ? "hide the post" : "show the post",
+      await createClient().from("announcements").update({ is_active: !a.is_active }).eq("id", a.id).select("id"));
+    if (problem) return onError(problem);
     onSuccess(a.is_active ? `"${a.title}" is hidden.` : `"${a.title}" is live again.`);
     onChanged();
   }
@@ -114,8 +116,8 @@ export default function AnnouncementsTab({ announcements, adminId, onError, onSu
   async function remove(a: Announcement) {
     if (!confirm(`Delete "${a.title}" permanently? Hiding it instead can be undone.`)) return;
     onError("");
-    const { error } = await createClient().from("announcements").delete().eq("id", a.id);
-    if (error) return onError(`Couldn't delete it: ${error.message}`);
+    const problem = writeProblem("delete the post", await createClient().from("announcements").delete().eq("id", a.id).select("id"));
+    if (problem) return onError(problem);
     onSuccess(`"${a.title}" was deleted.`);
     onChanged();
   }

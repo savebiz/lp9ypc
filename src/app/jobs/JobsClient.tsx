@@ -10,6 +10,8 @@ import { ENGAGEMENT_LABELS, LEVEL_LABELS, WORK_MODE_LABELS, shortPathName } from
 import type { CareerPath, Job } from "@/types";
 
 interface Props {
+  /** Search text from the home page's "Find your next role" box (?q=). */
+  initialQuery?: string;
   initialJobs: Job[];
   careerPaths: CareerPath[];
   userId: string | null;
@@ -19,11 +21,11 @@ interface Props {
 
 const ALL = "all";
 
-export default function JobsClient({ initialJobs, careerPaths, userId, initialSavedIds, initialPath }: Props) {
+export default function JobsClient({ initialJobs, careerPaths, userId, initialSavedIds, initialPath, initialQuery = "" }: Props) {
   const router = useRouter();
   const validInitialPath = careerPaths.some((c) => c.slug === initialPath) ? [initialPath as string] : [];
 
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQuery);
   const [paths, setPaths] = useState<string[]>(validInitialPath);
   const [workMode, setWorkMode] = useState(ALL);
   const [type, setType] = useState(ALL);

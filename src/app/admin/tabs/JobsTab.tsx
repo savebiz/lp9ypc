@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ENGAGEMENT_LABELS, WORK_MODE_LABELS, formatDate, hostnameOf, isExpired, shortPathName } from "@/lib/utils";
 import type { CareerPath, Job, JobSource } from "@/types";
 import JobEditor from "./JobEditor";
-import type { TabActions } from "./shared";
+import { writeProblem, type TabActions } from "./shared";
 
 /** Approved jobs (and jobs from before the review queue existed). Pending/rejected ones live in the Review queue. */
 export default function JobsTab({ jobs, careerPaths, jobSources, adminId, onError, onSuccess, onChanged }: TabActions & {
@@ -28,8 +28,9 @@ export default function JobsTab({ jobs, careerPaths, jobSources, adminId, onErro
 
   async function toggleActive(j: Job) {
     onError("");
-    const { error } = await createClient().from("jobs").update({ is_active: !j.is_active }).eq("id", j.id);
-    if (error) return onError(`Couldn't update the job: ${error.message}`);
+    const problem = writeProblem(j.is_active ? "archive the job" : "restore the job",
+      await createClient().from("jobs").update({ is_active: !j.is_active }).eq("id", j.id).select("id"));
+    if (problem) return onError(problem);
     onSuccess(j.is_active ? `"${j.title}" is archived and hidden from members.` : `"${j.title}" is live again.`);
     onChanged();
   }
@@ -37,8 +38,8 @@ export default function JobsTab({ jobs, careerPaths, jobSources, adminId, onErro
   async function remove(j: Job) {
     if (!confirm(`Delete "${j.title}" permanently? Members who saved it will lose it. Archiving hides it instead and can be undone.`)) return;
     onError("");
-    const { error } = await createClient().from("jobs").delete().eq("id", j.id);
-    if (error) return onError(`Couldn't delete the job: ${error.message}`);
+    const problem = writeProblem("delete the job", await createClient().from("jobs").delete().eq("id", j.id).select("id"));
+    if (problem) return onError(problem);
     onSuccess(`"${j.title}" was deleted.`);
     onChanged();
   }

@@ -5,6 +5,7 @@ import { CircleAlert, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ENGAGEMENT_LABELS, LEVEL_LABELS, WORK_MODE_LABELS, safeHttpUrl } from "@/lib/utils";
 import type { CareerPath, Job } from "@/types";
+import { friendlyDbError, writeProblem } from "./shared";
 
 export const EMPTY_JOB = {
   title: "", company: "", location: "", work_mode: "", engagement_type: "", experience_level: "",
@@ -57,6 +58,11 @@ export default function JobEditor({ job, careerPaths, adminId, approveOnSave = f
     const supabase = createClient();
     const payload = {
       ...form,
+      title: form.title.trim(),
+      company: form.company.trim(),
+      location: form.location.trim() || null,
+      salary_range: form.salary_range.trim() || null,
+      description: form.description.trim() || null,
       application_link: safeHttpUrl(form.application_link)!,
       deadline: form.deadline || null,
       career_path_id: form.career_path_id || null,
@@ -65,11 +71,11 @@ export default function JobEditor({ job, careerPaths, adminId, approveOnSave = f
       experience_level: form.experience_level || null,
       ...(approveOnSave ? { review_status: "approved" as const, is_active: true } : {}),
     };
-    const { error } = job
-      ? await supabase.from("jobs").update(payload).eq("id", job.id)
-      : await supabase.from("jobs").insert({ ...payload, posted_by: adminId || null });
+    const problem = job
+      ? writeProblem("save the job", await supabase.from("jobs").update(payload).eq("id", job.id).select("id"))
+      : await supabase.from("jobs").insert({ ...payload, posted_by: adminId || null }).then(({ error }) => (error ? friendlyDbError("post the job", error) : null));
     setSaving(false);
-    if (error) return onError(`Couldn't save the job: ${error.message}`);
+    if (problem) return onError(problem);
     onSaved();
   }
 
