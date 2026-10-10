@@ -12,6 +12,7 @@ import { getSession } from "@/lib/session";
 import { scheduleStalePostChecks } from "@/app/api/_lib/community";
 import {
   REPLY_COLUMNS,
+  REPLY_COLUMNS_PRE_REPLY_TO,
   displayNames,
   isUuid,
   loadCommunity,
@@ -46,6 +47,7 @@ function toView(r: Reply): ViewPost {
     editedAt: r.edited_at ?? null,
     createdAt: r.created_at,
     parentId: r.parent_id ?? null,
+    replyToId: r.reply_to_id ?? null,
     depth: r.depth ?? 0,
   };
 }
@@ -61,11 +63,21 @@ function threadView(t: Thread): ViewThread {
     editedAt: t.edited_at ?? null,
     createdAt: t.created_at,
     parentId: null,
+    replyToId: null,
     depth: 0,
     title: t.title,
     isPinned: t.is_pinned,
     isLocked: t.is_locked,
   };
+}
+
+/** Replies oldest first. Falls back to the pre-migration-5 columns if reply_to_id doesn't exist yet (42703). */
+async function loadReplies(supabase: Awaited<ReturnType<typeof getSession>>["supabase"], threadId: string) {
+  const query = (columns: string) =>
+    supabase.from("replies").select(columns).eq("thread_id", threadId).order("created_at", { ascending: true }).limit(REPLY_LIMIT);
+  const res = await query(REPLY_COLUMNS);
+  if (res.error?.code === "42703") return query(REPLY_COLUMNS_PRE_REPLY_TO);
+  return res;
 }
 
 export default async function ThreadPage({ params }: { params: Params }) {
@@ -104,12 +116,7 @@ export default async function ThreadPage({ params }: { params: Params }) {
   // Everything that only needs the ids runs in parallel.
   const [{ thread, failed: threadFailed }, repliesRes, viewer, likesRes, reportsRes] = await Promise.all([
     loadThread(threadId),
-    supabase
-      .from("replies")
-      .select(REPLY_COLUMNS)
-      .eq("thread_id", threadId)
-      .order("created_at", { ascending: true })
-      .limit(REPLY_LIMIT),
+    loadReplies(supabase, threadId),
     viewerAndManagers(supabase, community.id, user.id),
     supabase.from("post_likes").select("target_id").eq("member_id", user.id).eq("community_id", community.id).limit(2000),
     supabase.from("reports").select("target_id").eq("reporter_id", user.id).eq("community_id", community.id).limit(2000),
@@ -120,7 +127,7 @@ export default async function ThreadPage({ params }: { params: Params }) {
   const isMember = viewer.role !== null;
   const canModerate = isAdmin || viewer.role === "manager";
   const repliesFailed = !!repliesRes.error;
-  const rawReplies = (repliesRes.data ?? []) as Reply[];
+  const rawReplies = (repliesRes.data ?? []) as unknown as Reply[];
   // RLS already hides other people's held/removed replies from non-moderators.
   // Your own deleted replies drop out too; any replies under them get a stub.
   const replies = rawReplies.filter(

@@ -52,5 +52,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     admin,
   );
 
+  await (await import("@/app/api/_lib/audit")).writeAudit(admin, { actorId: auth.user.id, action: "job_source.run", targetType: "job_source", targetId: source.id, details: { status: result.status, inserted: result.inserted } });
   return json({ ok: true, status: result.status, found: result.found, inserted: result.inserted, message: result.message });
 }

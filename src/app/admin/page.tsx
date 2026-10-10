@@ -5,7 +5,7 @@ import type { AdminData } from "./tabs/shared";
 import { getSession } from "@/lib/session";
 import { withModerationNotes } from "@/lib/moderation-notes";
 import type {
-  AgentRun, Announcement, CareerPath, CareerPathCandidate, Community, CommunityOverview, Job, JobSource,
+  AdminAuditEntry, AgentRun, Announcement, CareerPath, CareerPathCandidate, Community, CommunityOverview, Job, JobSource,
   Profile, Reply, Report, Thread,
 } from "@/types";
 
@@ -14,7 +14,7 @@ export const metadata = { title: "Admin · LP9 YPC" };
 // Moderation notes are hidden from select by column grants; never select "*" on posts.
 // Phase 3 adds like_count/edited_at (threads) and parent_id/depth/like_count/edited_at (replies).
 const THREAD_COLS = "id, community_id, author_id, title, body, status, needs_review, is_pinned, is_locked, reply_count, last_activity_at, created_at, updated_at, like_count, edited_at";
-const REPLY_COLS = "id, thread_id, community_id, author_id, body, status, needs_review, created_at, updated_at, parent_id, depth, like_count, edited_at";
+const REPLY_COLS = "id, thread_id, community_id, author_id, body, status, needs_review, created_at, updated_at, parent_id, depth, like_count, edited_at, reply_to_id";
 // The review queue: held posts, plus posts published while the automatic check was down.
 const NEEDS_REVIEW = "status.eq.held,and(status.eq.visible,needs_review.eq.true)";
 
@@ -37,7 +37,7 @@ export default async function AdminPage() {
   // Phase 2 (job finder, communities, moderation, agents). All admin-readable under RLS.
   const [
     sourcesRes, communitiesRes, communityMembersRes, overviewRes,
-    heldThreadsRes, heldRepliesRes, reportsRes, candidatesRes, runsRes,
+    heldThreadsRes, heldRepliesRes, reportsRes, candidatesRes, runsRes, auditRes,
   ] = await Promise.all([
     supabase.from("job_sources").select("*").order("created_at", { ascending: false }),
     supabase.from("communities").select("*").order("name"),
@@ -48,6 +48,8 @@ export default async function AdminPage() {
     supabase.from("reports").select("*").eq("status", "open").order("created_at", { ascending: true }).limit(100),
     supabase.from("career_path_candidates").select("*").eq("status", "pending").order("created_at", { ascending: true }),
     supabase.from("agent_runs").select("*").order("started_at", { ascending: false }).limit(20),
+    supabase.from("admin_audit").select("id, actor_id, action, target_type, target_id, details, created_at")
+      .order("created_at", { ascending: false }).limit(50),
   ]);
 
   const [heldThreads, heldReplies] = await Promise.all([
@@ -81,7 +83,7 @@ export default async function AdminPage() {
     ["community members", communityMembersRes], ["community counts", overviewRes],
     ["held discussions", heldThreadsRes], ["held replies", heldRepliesRes], ["reports", reportsRes],
     ["career path ideas", candidatesRes], ["assistant runs", runsRes], ["reported discussions", relThreadsRes],
-    ["reported replies", relRepliesRes], ["related discussions", extraThreadsRes],
+    ["reported replies", relRepliesRes], ["related discussions", extraThreadsRes], ["activity log", auditRes],
   ];
   const failed = sections.filter(([, r]) => r.error);
   for (const [name, r] of failed) console.error(`[admin] ${name} failed to load (${r.error?.code ?? "unknown"})`);
@@ -107,6 +109,7 @@ export default async function AdminPage() {
     relatedReplies,
     candidates: (candidatesRes.data ?? []) as CareerPathCandidate[],
     agentRuns: (runsRes.data ?? []) as AgentRun[],
+    audit: (auditRes.data ?? []) as AdminAuditEntry[],
   };
 
   return (

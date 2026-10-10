@@ -2,7 +2,7 @@
 
 import { CircleAlert } from "lucide-react";
 import type {
-  AgentRun, Announcement, CareerPath, CareerPathCandidate, Community, CommunityMember, CommunityOverview,
+  AdminAuditEntry, AgentRun, Announcement, CareerPath, CareerPathCandidate, Community, CommunityMember, CommunityOverview,
   Job, JobSource, Profile, Reply, Report, Thread,
 } from "@/types";
 
@@ -27,6 +27,8 @@ export interface AdminData {
   relatedReplies: Reply[];
   candidates: CareerPathCandidate[];
   agentRuns: AgentRun[];
+  /** Newest 50 admin_audit rows (Phase 3.1). */
+  audit: AdminAuditEntry[];
 }
 
 /** Props every tab gets for feedback and refreshing server data. */

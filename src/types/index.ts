@@ -77,6 +77,9 @@ export interface Announcement {
   ends_at: string | null;
   location: string | null;
   link_url: string | null;
+  // Migration 5: event flyer (public URL in the event-flyers bucket) + alt text
+  image_url?: string | null;
+  image_alt?: string | null;
 }
 
 export interface MemberCareerPath {
@@ -222,6 +225,8 @@ export interface Reply extends PostModeration {
   updated_at: string;
   // Phase 3: replies to replies (depth 0-2), likes, edit marker
   parent_id: string | null;
+  /** Migration 5: the reply actually answered (may differ from parent_id after re-parenting). */
+  reply_to_id: string | null;
   depth: number;
   like_count: number;
   edited_at: string | null;
@@ -277,4 +282,15 @@ export interface AgentRun {
   web_searches: number;
   error: string | null;
   details: Record<string, unknown>;
+}
+
+/** Migration 5: permanent record of sensitive admin actions (admins read; server writes). */
+export interface AdminAuditEntry {
+  id: string;
+  actor_id: string | null;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  details: Record<string, unknown>;
+  created_at: string;
 }

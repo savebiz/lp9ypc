@@ -1,10 +1,10 @@
 "use client";
 
 import { ChevronRight } from "lucide-react";
-import { isExpired } from "@/lib/utils";
-import type { CareerPath, Job, Profile } from "@/types";
+import { firstName, isExpired } from "@/lib/utils";
+import type { AdminAuditEntry, CareerPath, Job, JobSource, Profile } from "@/types";
 import type { Tab } from "../AdminClient";
-import { Stat } from "./shared";
+import { Stat, formatDateTime } from "./shared";
 import styles from "../admin.module.css";
 
 export interface OverviewQueues {
@@ -16,12 +16,14 @@ export interface OverviewQueues {
   testAccounts: number;
 }
 
-export default function OverviewTab({ jobs, members, careerPaths, memberPaths, queues, onGoTo }: {
+export default function OverviewTab({ jobs, members, careerPaths, memberPaths, queues, audit, jobSources, onGoTo }: {
   jobs: Job[];
   members: Profile[];
   careerPaths: CareerPath[];
   memberPaths: { member_id: string; career_path_id: string }[];
   queues: OverviewQueues;
+  audit: AdminAuditEntry[];
+  jobSources: JobSource[];
   onGoTo: (tab: Tab) => void;
 }) {
   const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -76,6 +78,8 @@ export default function OverviewTab({ jobs, members, careerPaths, memberPaths, q
         </ul>
       </section>
 
+      <ActivityLog audit={audit} members={members} jobSources={jobSources} />
+
       <section className="card" aria-labelledby="bypath-h">
         <h2 id="bypath-h" className="title-sm" style={{ marginBottom: 4 }}>Registrations by career path</h2>
         <p className="small muted" style={{ marginBottom: 16 }}>Members can choose more than one path.</p>
@@ -95,5 +99,66 @@ export default function OverviewTab({ jobs, members, careerPaths, memberPaths, q
         )}
       </section>
     </div>
+  );
+}
+
+const RUN_RESULT: Record<string, string> = {
+  ok: "it worked",
+  empty: "no jobs found on the page",
+  blocked: "the site blocked us",
+  error: "it ran into a problem",
+};
+
+/** One audit row as a plain-English sentence. Names only — never contact details. */
+function describe(e: AdminAuditEntry, memberName: Map<string, string>, sourceName: Map<string, string>): string {
+  const actor = e.actor_id ? memberName.get(e.actor_id) : undefined;
+  const who = actor ? firstName(actor) : e.actor_id ? "An admin" : "An admin (account since removed)";
+  const d = e.details ?? {};
+  switch (e.action) {
+    case "member.role_change": {
+      const target = (e.target_id && memberName.get(e.target_id)) || "a member";
+      return d.to === "admin" ? `${who} made ${target} an admin` : `${who} removed admin access from ${target}`;
+    }
+    case "job_source.run": {
+      const src = (e.target_id && sourceName.get(e.target_id)) || "a job source";
+      const n = typeof d.inserted === "number" ? d.inserted : 0;
+      const result = typeof d.status === "string" ? RUN_RESULT[d.status] ?? d.status : "";
+      return `${who} ran the job finder on ${src}${result ? ` — ${result}` : ""}, ${n} new job${n === 1 ? "" : "s"} for review`;
+    }
+    default:
+      return `${who}: ${e.action.replace(/[._]/g, " ")}`;
+  }
+}
+
+/** Newest 50 sensitive admin actions (admin_audit). The first 8 show; the rest fold away. */
+function ActivityLog({ audit, members, jobSources }: { audit: AdminAuditEntry[]; members: Profile[]; jobSources: JobSource[] }) {
+  const memberName = new Map(members.filter((m) => m.full_name?.trim()).map((m) => [m.id, m.full_name.trim()]));
+  const sourceName = new Map(jobSources.map((s) => [s.id, s.name]));
+  const row = (e: AdminAuditEntry) => (
+    <li key={e.id} className={styles.activityRow}>
+      <span>{describe(e, memberName, sourceName)}</span>
+      <time className="small muted" dateTime={e.created_at}>{formatDateTime(e.created_at)}</time>
+    </li>
+  );
+  return (
+    <section className="card" aria-labelledby="activity-h">
+      <h2 id="activity-h" className="title-sm" style={{ marginBottom: 4 }}>Activity log</h2>
+      <p className="small muted" style={{ marginBottom: 12 }}>
+        A permanent record of sensitive admin actions, such as changing who is an admin or running the job finder.
+      </p>
+      {audit.length === 0 ? (
+        <p className="ink-2">Nothing recorded yet.</p>
+      ) : (
+        <>
+          <ul className={styles.activityList}>{audit.slice(0, 8).map(row)}</ul>
+          {audit.length > 8 && (
+            <details className={styles.details}>
+              <summary className="small">Show older activity ({audit.length - 8})</summary>
+              <ul className={styles.activityList}>{audit.slice(8).map(row)}</ul>
+            </details>
+          )}
+        </>
+      )}
+    </section>
   );
 }

@@ -50,3 +50,10 @@
   align-self: flex-start;
   margin-left: -4px;
 }
+
+/* Full-width flyer above the title (the /news page). */
+.flyerFull {
+  max-width: 440px;
+  max-height: none;
+  margin: 4px 0 6px;
+}

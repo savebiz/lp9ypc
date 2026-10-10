@@ -13,6 +13,26 @@
   background: var(--paper);
 }
 
+/* Left column: date tile, then the flyer thumbnail (same width). */
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Full-width flyer spans both columns, above the date and details. */
+.flyerFull {
+  grid-column: 1 / -1;
+}
+
+/* Flyer in place of the write-up: the whole poster, never taller than needed. */
+.flyerInline {
+  max-width: 440px;
+  max-height: none;
+  margin-top: 4px;
+}
+
 .date {
   display: flex;
   flex-direction: column;

@@ -123,6 +123,7 @@ export default function AdminClient({ data }: { data: AdminData }) {
               sourceProblems: data.jobSources.filter((s) => s.is_active && (s.last_status === "error" || s.last_status === "blocked")).length,
               testAccounts: members.filter((m) => isTestAccount(m.email)).length,
             }}
+            audit={data.audit} jobSources={data.jobSources}
             onGoTo={(t) => select(t, true)}
           />
         )}

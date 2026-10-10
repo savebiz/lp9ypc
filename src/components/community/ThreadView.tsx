@@ -45,6 +45,8 @@ export interface ViewPost {
   createdAt: string;
   /** Replies only. */
   parentId: string | null;
+  /** The reply the member actually answered (migration 5); differs from parentId when re-parented at depth 2. */
+  replyToId: string | null;
   depth: number;
   /** Set locally when a reply to a depth-2 reply was re-parented. */
   replyingTo?: string;
@@ -128,6 +130,8 @@ interface Ctx {
   viewer: Props["viewer"];
   canReply: boolean;
   nameOf: (id: string) => string;
+  /** "Replying to …" text for a re-parented reply, or null. */
+  replyingToLabel: (post: ViewPost) => string | null;
   badges: Props["badges"];
   notes: Props["notes"];
   liked: Set<string>;
@@ -223,6 +227,15 @@ export default function ThreadView(props: Props) {
     viewer,
     canReply,
     nameOf,
+    replyingToLabel: (post) => {
+      if (post.replyToId && post.replyToId !== post.parentId) {
+        const target = replies.find((r) => r.id === post.replyToId);
+        if (!target || target.status === "removed") return "Replying to a deleted reply";
+        return `Replying to ${nameOf(target.authorId)}`;
+      }
+      // In-session fallback (before migration 5, or a reply just posted).
+      return post.replyingTo ? `Replying to ${post.replyingTo}` : null;
+    },
     badges: props.badges,
     notes: props.notes,
     liked,
@@ -266,6 +279,7 @@ export default function ThreadView(props: Props) {
           editedAt: null,
           createdAt: now,
           parentId,
+          replyToId: target ? target.id : null,
           depth,
           replyingTo,
         },
@@ -573,6 +587,8 @@ function PostCard({ kind, post, ctx, descendants, collapsed, onToggleCollapse }:
   const showReply = visible && ctx.canReply;
   const showShare = visible && threadVisible;
 
+  const replyingLine = isLead ? null : ctx.replyingToLabel(post);
+
   const meta = (
     <p className={styles.postMeta} style={isLead ? undefined : { marginTop: 0 }}>
       <span className={`${styles.metaItem} ${styles.author}`}>
@@ -629,7 +645,7 @@ function PostCard({ kind, post, ctx, descendants, collapsed, onToggleCollapse }:
 
       {note}
 
-      {post.replyingTo && !editing && <p className={styles.replyingLine}>Replying to {post.replyingTo}</p>}
+      {replyingLine && !editing && <p className={styles.replyingLine}>{replyingLine}</p>}
 
       {editing ? (
         <EditForm

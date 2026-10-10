@@ -86,3 +86,14 @@ export function schedulePostModeration(admin: SupabaseClient, job: PostModeratio
 - Read `CLAUDE.md` (brain repo) and your skills first. Calm Kinetic tokens; mobile-first (375px); 44px tap targets; WCAG AA; honest copy.
 - Edit only files you own. No new dependencies, no `npm install`, no `next build`, no git. Verify with `npx tsc --noEmit` and fix errors in your files.
 - Report: files changed, what's done/not done, anything the tech lead must wire.
+
+---
+
+# Phase 3.1 addendum (2026-10-10): reply targets, admin audit, event flyers, local AI helper
+
+Migration `supabase/migrations/20261011120000_replyto_audit_flyers.sql` (tech lead; Victor applies it).
+
+- **`replies.reply_to_id`**: set automatically by the `replies_set_depth` trigger to the parent the member actually replied to, BEFORE re-parenting. Routes don't need to set it. Readable column. UI: show "Replying to {Name}" when `reply_to_id` is set and differs from `parent_id` (community-engineer). Add it to `REPLY_COLUMNS` and admin reply column lists.
+- **`admin_audit (id, actor_id, action, target_type, target_id, details jsonb, created_at)`**: admins can read; ONLY server routes write it, with the service role. Helper (fullstack-admin-engineer) `src/app/api/_lib/audit.ts`: `export async function writeAudit(admin, { actorId, action, targetType?, targetId?, details? }): Promise<void>` that never throws (logs a code on failure). Actions to record now: `member.role_change` (details `{from, to}`), `job_source.run` (manual Run now). Never put member contact details in `details`.
+- **Event flyers**: `announcements.image_url` (must start `https://`; the public URL from the `event-flyers` bucket) and `image_alt` (≤300 chars, required in the UI when a flyer is attached). Bucket `event-flyers`: public read, admins-only write (RLS on storage.objects), 5 MB, jpeg/png/webp. Upload path: `flyers/{yyyy}/{uuid}.{ext}`.
+- **Local AI helper** (ai-agents-engineer): see the brief in your task message.

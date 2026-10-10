@@ -5,7 +5,7 @@ import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import EventCard from "@/components/news/EventCard";
 import AnnouncementItem from "@/components/news/AnnouncementItem";
-import { NEWS_COLUMNS, SCOPES, SCOPE_NAMES, SCOPE_WORDS, parseScope, type NewsItem } from "@/components/news/news";
+import { SCOPES, SCOPE_NAMES, SCOPE_WORDS, parseScope, selectNews, type NewsItem } from "@/components/news/news";
 import { getSession } from "@/lib/session";
 import type { AnnouncementScope } from "@/types";
 import styles from "./news.module.css";
@@ -37,28 +37,26 @@ async function settle(query: PromiseLike<{ data: unknown; error: unknown }>): Pr
 async function loadNews(supabase: Session["supabase"], scope: AnnouncementScope | null): Promise<[Loaded, Loaded]> {
   const now = new Date().toISOString();
 
-  let events = supabase
-    .from("announcements")
-    .select(NEWS_COLUMNS)
-    .eq("is_active", true)
-    .eq("kind", "event")
-    // Keep events listed while they're happening: upcoming, or not yet ended.
-    .or(`starts_at.gte."${now}",ends_at.gte."${now}"`);
-  let announcements = supabase
-    .from("announcements")
-    .select(NEWS_COLUMNS)
-    .eq("is_active", true)
-    .eq("kind", "announcement");
+  // Builders, not queries: selectNews may run each one twice (once without the
+  // flyer columns if the database doesn't have them yet).
+  const events = (cols: string) => {
+    let q = supabase
+      .from("announcements")
+      .select(cols)
+      .eq("is_active", true)
+      .eq("kind", "event")
+      // Keep events listed while they're happening: upcoming, or not yet ended.
+      .or(`starts_at.gte."${now}",ends_at.gte."${now}"`);
+    if (scope) q = q.eq("scope", scope);
+    return q.order("starts_at", { ascending: true }).limit(EVENTS_LIMIT);
+  };
+  const announcements = (cols: string) => {
+    let q = supabase.from("announcements").select(cols).eq("is_active", true).eq("kind", "announcement");
+    if (scope) q = q.eq("scope", scope);
+    return q.order("created_at", { ascending: false }).limit(ANNOUNCEMENTS_LIMIT);
+  };
 
-  if (scope) {
-    events = events.eq("scope", scope);
-    announcements = announcements.eq("scope", scope);
-  }
-
-  return Promise.all([
-    settle(events.order("starts_at", { ascending: true }).limit(EVENTS_LIMIT)),
-    settle(announcements.order("created_at", { ascending: false }).limit(ANNOUNCEMENTS_LIMIT)),
-  ]);
+  return Promise.all([settle(selectNews(events)), settle(selectNews(announcements))]);
 }
 
 export default async function NewsPage({

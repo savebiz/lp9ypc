@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { CalendarDays, ExternalLink, Eye, EyeOff, Loader2, MapPin, Pencil, Plus, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { CalendarDays, ExternalLink, Eye, EyeOff, ImagePlus, Loader2, MapPin, Pencil, Plus, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, hostnameOf, safeHttpUrl } from "@/lib/utils";
 import type { Announcement, AnnouncementScope } from "@/types";
 import { FieldError, formatDateTime, friendlyDbError, isoToLocalInput, localInputToIso, writeProblem, type TabActions } from "./shared";
+import { FLYER_TYPES, flyerFileProblem, flyerPathFromUrl, prepareFlyer, removeFlyerObject, uploadFlyer } from "./flyer";
 import styles from "../admin.module.css";
 
 export const SCOPE_LABELS: Record<AnnouncementScope, string> = {
@@ -25,17 +26,24 @@ interface AnnForm {
   ends_at: string;
   location: string;
   link_url: string;
+  /** Saved flyer URL ("" = none). A newly picked file is held separately until Save. */
+  image_url: string;
+  image_alt: string;
 }
 const EMPTY: AnnForm = {
   title: "", content: "", scope: "province", scope_label: "", kind: "announcement",
-  starts_at: "", ends_at: "", location: "", link_url: "",
+  starts_at: "", ends_at: "", location: "", link_url: "", image_url: "", image_alt: "",
 };
+
+type PickedFlyer = { blob: Blob; type: string; ext: string; preview: string };
+type FormErrors = Partial<Record<keyof AnnForm | "flyer", string>>;
 
 function toForm(a: Announcement): AnnForm {
   return {
     title: a.title, content: a.content ?? "", scope: a.scope ?? "province", scope_label: a.scope_label ?? "",
     kind: a.kind ?? "announcement", starts_at: isoToLocalInput(a.starts_at), ends_at: isoToLocalInput(a.ends_at),
     location: a.location ?? "", link_url: a.link_url ?? "",
+    image_url: safeHttpUrl(a.image_url) ?? "", image_alt: a.image_alt ?? "",
   };
 }
 
@@ -46,14 +54,48 @@ export default function AnnouncementsTab({ announcements, adminId, onError, onSu
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Announcement | null>(null);
   const [form, setForm] = useState<AnnForm>(EMPTY);
-  const [errors, setErrors] = useState<Partial<Record<keyof AnnForm, string>>>({});
+  const [errors, setErrors] = useState<FormErrors>({});
   const [saving, setSaving] = useState(false);
+  const [picked, setPicked] = useState<PickedFlyer | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Free the preview's memory when it's replaced or the form closes.
+  useEffect(() => () => { if (picked) URL.revokeObjectURL(picked.preview); }, [picked]);
+
+  function clearPicked() {
+    setPicked(null);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  async function onPickFlyer(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const problem = flyerFileProblem(file);
+    if (problem) {
+      setErrors((x) => ({ ...x, flyer: problem }));
+      e.target.value = "";
+      return;
+    }
+    setErrors((x) => ({ ...x, flyer: undefined }));
+    setPreparing(true);
+    const prepared = await prepareFlyer(file);
+    setPreparing(false);
+    setPicked({ ...prepared, preview: URL.createObjectURL(prepared.blob) });
+    setForm((f) => ({ ...f, image_alt: f.image_alt || f.title.trim().slice(0, 300) }));
+  }
+
+  function removeFlyer() {
+    clearPicked();
+    setForm((f) => ({ ...f, image_url: "", image_alt: "" }));
+    setErrors((x) => ({ ...x, flyer: undefined, image_alt: undefined }));
+  }
 
   function openNew() {
-    setEditing(null); setForm(EMPTY); setErrors({}); setShowForm(true);
+    setEditing(null); setForm(EMPTY); setErrors({}); clearPicked(); setShowForm(true);
   }
   function openEdit(a: Announcement) {
-    setEditing(a); setForm(toForm(a)); setErrors({}); setShowForm(true);
+    setEditing(a); setForm(toForm(a)); setErrors({}); clearPicked(); setShowForm(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   function set<K extends keyof AnnForm>(k: K, v: AnnForm[K]) {
@@ -63,7 +105,7 @@ export default function AnnouncementsTab({ announcements, adminId, onError, onSu
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    const errs: Partial<Record<keyof AnnForm, string>> = {};
+    const errs: FormErrors = {};
     if (!form.title.trim()) errs.title = "Give it a title";
     const startsAt = localInputToIso(form.starts_at);
     const endsAt = localInputToIso(form.ends_at);
@@ -74,6 +116,9 @@ export default function AnnouncementsTab({ announcements, adminId, onError, onSu
     const link = form.link_url.trim() ? safeHttpUrl(form.link_url) : null;
     if (form.link_url.trim() && !link) errs.link_url = "Paste the full link, starting with https://";
     else if (link && link.length > 2000) errs.link_url = "That link is too long";
+    const hasFlyer = !!picked || !!form.image_url;
+    if (hasFlyer && !form.image_alt.trim()) errs.image_alt = "Describe the flyer in a sentence, for members who use screen readers";
+    else if (form.image_alt.trim().length > 300) errs.image_alt = "Keep the description under 300 characters";
     setErrors(errs);
     if (Object.keys(errs).length) {
       document.getElementById(`a-${Object.keys(errs)[0]}`)?.focus();
@@ -82,6 +127,22 @@ export default function AnnouncementsTab({ announcements, adminId, onError, onSu
 
     setSaving(true); onError("");
     const supabase = createClient();
+
+    // Upload a newly picked flyer first, so the post only ever points at a file that exists.
+    let imageUrl: string | null = form.image_url || null;
+    let uploadedPath: string | null = null;
+    if (picked) {
+      const up = await uploadFlyer(supabase, picked);
+      if (!up.ok) {
+        setSaving(false);
+        setErrors((x) => ({ ...x, flyer: up.error }));
+        return onError(up.error);
+      }
+      imageUrl = up.url;
+      uploadedPath = up.path;
+    }
+    const oldUrl = editing ? safeHttpUrl(editing.image_url) : null;
+
     const payload = {
       title: form.title.trim(),
       content: form.content.trim() || null,
@@ -92,15 +153,22 @@ export default function AnnouncementsTab({ announcements, adminId, onError, onSu
       ends_at: endsAt,
       location: form.location.trim() || null,
       link_url: link,
+      image_url: imageUrl,
+      image_alt: imageUrl ? form.image_alt.trim().slice(0, 300) : null,
     };
     const problem = editing
       ? writeProblem("save the post", await supabase.from("announcements").update(payload).eq("id", editing.id).select("id"))
       : await supabase.from("announcements").insert({ ...payload, posted_by: adminId || null })
           .then(({ error }) => (error ? friendlyDbError("publish the post", error) : null));
     setSaving(false);
-    if (problem) return onError(problem);
+    if (problem) {
+      await removeFlyerObject(supabase, uploadedPath); // don't leave an orphaned upload behind
+      return onError(problem);
+    }
+    // The flyer was replaced or removed: tidy up the old file (best effort).
+    if (oldUrl && oldUrl !== imageUrl) await removeFlyerObject(supabase, flyerPathFromUrl(oldUrl));
     onSuccess(editing ? "Saved." : form.kind === "event" ? "Event posted." : "Announcement posted.");
-    setShowForm(false); setEditing(null); setForm(EMPTY);
+    setShowForm(false); setEditing(null); setForm(EMPTY); clearPicked();
     onChanged();
   }
 
@@ -116,8 +184,10 @@ export default function AnnouncementsTab({ announcements, adminId, onError, onSu
   async function remove(a: Announcement) {
     if (!confirm(`Delete "${a.title}" permanently? Hiding it instead can be undone.`)) return;
     onError("");
-    const problem = writeProblem("delete the post", await createClient().from("announcements").delete().eq("id", a.id).select("id"));
+    const supabase = createClient();
+    const problem = writeProblem("delete the post", await supabase.from("announcements").delete().eq("id", a.id).select("id"));
     if (problem) return onError(problem);
+    await removeFlyerObject(supabase, flyerPathFromUrl(a.image_url));
     onSuccess(`"${a.title}" was deleted.`);
     onChanged();
   }
@@ -190,12 +260,50 @@ export default function AnnouncementsTab({ announcements, adminId, onError, onSu
               <span className="hint" id="ah-link_url">Registration form, flyer or livestream. Must start with https://</span>
               {errors.link_url && <FieldError id="ae-link_url" msg={errors.link_url} />}
             </div>
+            <div className="field full">
+              <span className="label" id="a-flyer-label">Event flyer <span className="opt">(optional)</span></span>
+              <span className="hint" id="ah-flyer">JPG, PNG or WebP, up to 5 MB. We shrink it before uploading so it loads fast on phones.</span>
+              {(picked || form.image_url) ? (
+                <div className={styles.flyerPreview}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={picked?.preview ?? form.image_url} alt={form.image_alt || "Flyer preview"} />
+                  <div className="row-wrap" style={{ gap: 6 }}>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()} disabled={saving || preparing}>
+                      <ImagePlus size={16} aria-hidden="true" /> Replace
+                    </button>
+                    <button type="button" className={`btn btn-ghost btn-sm ${styles.dangerGhost}`} onClick={removeFlyer} disabled={saving || preparing}>
+                      <X size={16} aria-hidden="true" /> Remove flyer
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()} disabled={saving || preparing}
+                    aria-describedby={`ah-flyer${errors.flyer ? " ae-flyer" : ""}`}>
+                    {preparing ? <Loader2 size={16} className="spin" aria-hidden="true" /> : <ImagePlus size={16} aria-hidden="true" />}
+                    {preparing ? " Preparing…" : " Add a flyer"}
+                  </button>
+                </div>
+              )}
+              <input ref={fileRef} id="a-flyer" type="file" accept={FLYER_TYPES.join(",")} className="sr-only" tabIndex={-1}
+                aria-labelledby="a-flyer-label" onChange={onPickFlyer} />
+              {errors.flyer && <FieldError id="ae-flyer" msg={errors.flyer} />}
+            </div>
+            {(picked || form.image_url) && (
+              <div className="field full">
+                <label className="label" htmlFor="a-image_alt">Flyer description (for screen readers)</label>
+                <span className="hint" id="ah-image_alt">One sentence on what the flyer says, e.g. the event name, date, time and place.</span>
+                <input id="a-image_alt" className="input" maxLength={300} value={form.image_alt} onChange={(e) => set("image_alt", e.target.value)}
+                  aria-invalid={!!errors.image_alt} aria-describedby={`ah-image_alt${errors.image_alt ? " ae-image_alt" : ""}`} />
+                {errors.image_alt && <FieldError id="ae-image_alt" msg={errors.image_alt} />}
+              </div>
+            )}
           </div>
           <div className="row-wrap">
             <button type="submit" className="btn btn-solid" disabled={saving}>
               {saving ? <><Loader2 size={18} className="spin" aria-hidden="true" /> Saving…</> : editing ? "Save changes" : isEvent ? "Post event" : "Post announcement"}
             </button>
-            <button type="button" className="btn btn-ghost" onClick={() => { setShowForm(false); setEditing(null); }} disabled={saving}>Cancel</button>
+            <button type="button" className="btn btn-ghost" onClick={() => { setShowForm(false); setEditing(null); clearPicked(); }} disabled={saving}>Cancel</button>
           </div>
         </form>
       )}
@@ -206,8 +314,13 @@ export default function AnnouncementsTab({ announcements, adminId, onError, onSu
         <div className="list">
           {announcements.map((a) => {
             const link = safeHttpUrl(a.link_url);
+            const flyer = safeHttpUrl(a.image_url);
             return (
               <div key={a.id} className={`list-item${a.is_active ? "" : " dim"}`}>
+                {flyer && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={flyer} alt={a.image_alt || `Flyer for ${a.title}`} className={styles.flyerThumb} loading="lazy" />
+                )}
                 <div className="grow">
                   <div className="row-wrap" style={{ gap: 8 }}>
                     <strong>{a.title}</strong>

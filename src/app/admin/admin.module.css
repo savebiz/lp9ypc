@@ -214,3 +214,18 @@
 
 /* Loading skeletons (shared by the admin loading screen). */
 .skel { display: block; background: var(--line); border-radius: var(--r-input); }
+
+/* Overview: activity log. */
+.activityList { list-style: none; margin: 0; padding: 0; }
+.activityRow { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 15px; line-height: 1.45; }
+.activityRow:first-child { border-top: 0; }
+.activityRow > span { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
+
+/* News & events: event flyers. */
+.flyerPreview { display: grid; gap: 8px; justify-items: start; }
+.flyerPreview img { display: block; max-width: 100%; width: 280px; max-height: 360px; object-fit: contain; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--cream); }
+.flyerThumb { flex-shrink: 0; width: 64px; height: 64px; object-fit: cover; border: 1px solid var(--line); border-radius: var(--r-input); background: var(--cream); }
+@media (max-width: 699px) {
+  /* Keep the thumbnail beside the title instead of on its own row. */
+  .flyerThumb + :global(.grow) { flex: 1 1 calc(100% - 76px); }
+}

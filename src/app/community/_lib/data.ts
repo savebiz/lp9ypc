@@ -38,7 +38,9 @@ export const THREAD_COLUMNS =
   "id, community_id, author_id, title, body, status, needs_review, is_pinned, is_locked, reply_count, last_activity_at, created_at, updated_at, like_count, edited_at";
 
 export const REPLY_COLUMNS =
-  "id, thread_id, community_id, author_id, body, status, needs_review, created_at, updated_at, parent_id, depth, like_count, edited_at";
+  "id, thread_id, community_id, author_id, body, status, needs_review, created_at, updated_at, parent_id, depth, like_count, edited_at, reply_to_id";
+/** REPLY_COLUMNS before migration 5 (reply_to_id), used only if that column doesn't exist yet. */
+export const REPLY_COLUMNS_PRE_REPLY_TO = REPLY_COLUMNS.replace(", reply_to_id", "");
 
 /**
  * One thread by id, as the signed-in viewer is allowed to see it (RLS hides

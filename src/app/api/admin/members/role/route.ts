@@ -9,6 +9,7 @@
  */
 import { checkOrigin, fail, json, parseBody, requireAdmin, requireServiceRole, MESSAGES } from "@/app/api/_lib/http";
 import { isUuid } from "@/app/api/_lib/guards";
+import { writeAudit } from "@/app/api/_lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ export async function POST(req: Request) {
   const body = await parseBody(req);
   if (body.response) return body.response;
   const { memberId, role } = body.data;
+  const actorId = auth.user.id;
   if (!isUuid(memberId)) return fail(400, "Please choose a member.");
   if (role !== "admin" && role !== "member") return fail(400, "Choose either admin or member.");
 
@@ -69,5 +71,9 @@ export async function POST(req: Request) {
   }
 
   console.info(`[api/admin/members/role] role changed to ${role} by an admin`);
+  await writeAudit(admin, {
+    actorId, action: "member.role_change", targetType: "member", targetId: memberId,
+    details: { from: role === "admin" ? "member" : "admin", to: role },
+  });
   return json({ ok: true, role, changed: true });
 }
