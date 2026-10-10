@@ -275,11 +275,24 @@ select.input {
   .hero h1 { font-size: 72px; }
 }
 @media (min-width: 1000px) {
-  .hero-art { display: block; position: absolute; right: 24px; top: 48px; width: 360px; height: 360px; pointer-events: none; }
+  .hero-art {
+    display: block;
+    position: absolute;
+    right: 24px;
+    top: 24px;
+    width: 400px;
+    height: 400px;
+    pointer-events: none;
+    animation: heroFloat 6s ease-in-out infinite;
+  }
 }
 .dot-grid {
   background-image: radial-gradient(var(--blue) 1.3px, transparent 1.6px);
   background-size: 16px 16px; opacity: .2;
+}
+@keyframes heroFloat {
+  0%,  100% { transform: translateY(0px); }
+  50%        { transform: translateY(-8px); }
 }
 
 .cta-band {

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowRight, Briefcase, Compass, Megaphone } from "lucide-react";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
-import { HeroArt } from "@/components/ui/YPCMark";
+import { HeroLogoArt } from "@/components/ui/YPCMark";
 import { PathIcon } from "@/components/ui/icons";
 import { getSession } from "@/lib/session";
 import { BENEFITS, HERO, MISSION, STEPS } from "@/content/site";
@@ -35,7 +35,7 @@ export default async function LandingPage() {
         {/* ── Hero (the one loud screen) ───────────────────────── */}
         <section className="hero">
           <div className="wrap" style={{ position: "relative" }}>
-            <HeroArt />
+            <HeroLogoArt />
             <div style={{ position: "relative", zIndex: 1, maxWidth: 720 }}>
               <span className="eyebrow">{HERO.eyebrow}</span>
               <h1 style={{ marginTop: 16 }}>

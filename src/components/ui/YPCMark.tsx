@@ -59,3 +59,26 @@ export function HeroArt() {
   );
 }
 
+/** Desktop-only hero decoration: official LP9 YPC × RCCG YAYA logo crest.
+ *  Replaces the abstract FigureMark SVG with the real branded asset.
+ *  Reuses .hero-art for absolute positioning; animation defined in globals.css.
+ */
+export function HeroLogoArt() {
+  return (
+    <div className="hero-art" aria-hidden="true">
+      <Image
+        src="/branding/LP9_YAYA_Logo-bg.png"
+        alt="LP9 YPC Young Professionals Club crest"
+        priority
+        width={400}
+        height={400}
+        style={{
+          objectFit: "contain",
+          width: "100%",
+          height: "100%",
+          filter: "drop-shadow(0 8px 32px rgba(11,15,44,0.12))",
+        }}
+      />
+    </div>
+  );
+}
