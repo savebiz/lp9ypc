@@ -15,11 +15,13 @@ import ModerationTab from "./tabs/ModerationTab";
 import CareerIdeasTab from "./tabs/CareerIdeasTab";
 import AgentsTab from "./tabs/AgentsTab";
 import AnnouncementsTab from "./tabs/AnnouncementsTab";
+import FeedbackTab, { type FixTarget } from "./tabs/FeedbackTab";
+import type { BrokenLinkJob } from "./tabs/OverviewTab";
 import styles from "./admin.module.css";
 
 export type Tab =
   | "overview" | "jobs" | "review" | "sources" | "members" | "communities"
-  | "moderation" | "ideas" | "agents" | "announcements";
+  | "moderation" | "feedback" | "ideas" | "agents" | "announcements";
 
 type Feedback = { kind: "ok" | "error"; text: string } | null;
 
@@ -28,6 +30,8 @@ export default function AdminClient({ data }: { data: AdminData }) {
   const [tab, setTab] = useState<Tab>("overview");
   const [pending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<Feedback>(null);
+  // "Fix it now": which job or post to open in its editor when that tab mounts.
+  const [editTarget, setEditTarget] = useState<FixTarget | null>(null);
   const tabRefs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
   const refresh = useCallback(() => startTransition(() => router.refresh()), [router]);
 
@@ -60,6 +64,24 @@ export default function AdminClient({ data }: { data: AdminData }) {
   const rejectedJobs = data.jobs.filter((j) => j.review_status === "rejected").slice(0, 20);
   const heldCount = data.heldThreads.length + data.heldReplies.length;
   const moderationCount = heldCount + data.openReports.length;
+  const listedJobIds = useMemo(() => new Set(listedJobs.map((j) => j.id)), [listedJobs]);
+  const newFeedback = data.feedback ? data.feedback.filter((f) => f.status === "new").length : null;
+
+  // Live jobs with 2 or more open "This link doesn't work" reports (members or the assistant).
+  const brokenLinks = useMemo<BrokenLinkJob[]>(() => {
+    if (!data.feedback) return [];
+    const n = new Map<string, number>();
+    for (const f of data.feedback) {
+      if (f.kind === "link" && f.target_type === "job" && f.target_id && (f.status === "new" || f.status === "looking")) {
+        n.set(f.target_id, (n.get(f.target_id) ?? 0) + 1);
+      }
+    }
+    const health = new Map((data.linkHealth ?? []).map((h) => [h.job_id, h.fail_count]));
+    return data.jobs
+      .filter((j) => j.is_active && listedJobIds.has(j.id) && (n.get(j.id) ?? 0) >= 2)
+      .map((j) => ({ job: j, reports: n.get(j.id) ?? 0, failCount: health.get(j.id) ?? null }))
+      .sort((a, b) => b.reports - a.reports);
+  }, [data.feedback, data.linkHealth, data.jobs, listedJobIds]);
 
   const tabs: { key: Tab; label: string }[] = [
     { key: "overview", label: "Overview" },
@@ -69,19 +91,27 @@ export default function AdminClient({ data }: { data: AdminData }) {
     { key: "members", label: `Members (${members.length})` },
     { key: "communities", label: "Communities" },
     { key: "moderation", label: `Moderation (${moderationCount})` },
+    ...(newFeedback !== null ? [{ key: "feedback" as Tab, label: `Feedback (${newFeedback})` }] : []),
     { key: "announcements", label: `News & events (${data.announcements.length})` },
     { key: "ideas", label: `Career path ideas (${data.candidates.length})` },
     { key: "agents", label: "Assistants set-up" },
   ];
 
-  function select(t: Tab, focus = false) {
+  function select(t: Tab, focus = false, edit: FixTarget | null = null) {
     setTab(t);
+    setEditTarget(edit);
     setFeedback(null);
     const el = tabRefs.current[t];
     if (el) {
       el.scrollIntoView({ block: "nearest", inline: "nearest" });
       if (focus) el.focus();
     }
+    if (edit) window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  /** Opens the Jobs or News & events tab with that item already in its editor. */
+  function fixIt(target: FixTarget) {
+    select(target.tab, false, target);
   }
 
   // Arrow keys move between tabs (WAI-ARIA tabs pattern).
@@ -122,13 +152,17 @@ export default function AdminClient({ data }: { data: AdminData }) {
               careerIdeas: data.candidates.length,
               sourceProblems: data.jobSources.filter((s) => s.is_active && (s.last_status === "error" || s.last_status === "blocked")).length,
               testAccounts: members.filter((m) => isTestAccount(m.email)).length,
+              newFeedback,
             }}
             audit={data.audit} jobSources={data.jobSources}
+            brokenLinks={brokenLinks}
             onGoTo={(t) => select(t, true)}
+            onFixJob={(id) => fixIt({ tab: "jobs", id })}
           />
         )}
         {tab === "jobs" && (
-          <JobsTab jobs={listedJobs} careerPaths={careerPaths} jobSources={data.jobSources} adminId={data.adminId} {...actions} />
+          <JobsTab key={editTarget?.tab === "jobs" ? editTarget.id : "list"} jobs={listedJobs} careerPaths={careerPaths} jobSources={data.jobSources}
+            adminId={data.adminId} editId={editTarget?.tab === "jobs" ? editTarget.id : null} {...actions} />
         )}
         {tab === "review" && (
           <ReviewQueueTab pending={pendingJobs} rejected={rejectedJobs} careerPaths={careerPaths} jobSources={data.jobSources}
@@ -145,9 +179,16 @@ export default function AdminClient({ data }: { data: AdminData }) {
             relatedThreads={data.relatedThreads} relatedReplies={data.relatedReplies}
             communities={data.communities} members={members} {...actions} />
         )}
+        {tab === "feedback" && data.feedback && (
+          <FeedbackTab feedback={data.feedback} jobs={data.jobs} editableJobIds={listedJobIds} announcements={data.announcements}
+            careerPaths={careerPaths} communities={data.communities} members={members} onFixIt={fixIt} {...actions} />
+        )}
         {tab === "ideas" && <CareerIdeasTab candidates={data.candidates} careerPaths={careerPaths} adminId={data.adminId} {...actions} />}
         {tab === "agents" && <AgentsTab runs={data.agentRuns} />}
-        {tab === "announcements" && <AnnouncementsTab announcements={data.announcements} adminId={data.adminId} {...actions} />}
+        {tab === "announcements" && (
+          <AnnouncementsTab key={editTarget?.tab === "announcements" ? editTarget.id : "list"} announcements={data.announcements}
+            adminId={data.adminId} editId={editTarget?.tab === "announcements" ? editTarget.id : null} {...actions} />
+        )}
       </div>
 
       {/* Always-present live region so screen readers announce every message. */}

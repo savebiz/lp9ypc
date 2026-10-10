@@ -46,7 +46,14 @@ export type SafeFetchFailure =
 
 export type SafeFetchResult =
   | { ok: true; finalUrl: string; status: number; contentType: string; body: string; truncated: boolean }
-  | { ok: false; reason: SafeFetchFailure; status?: number; detail: string };
+  | {
+      ok: false;
+      reason: SafeFetchFailure;
+      status?: number;
+      detail: string;
+      /** dns_error only: the resolver's error code (ENOTFOUND = no such domain; EAI_AGAIN = temporary). */
+      dnsCode?: string;
+    };
 
 export interface SafeFetchOptions {
   timeoutMs?: number;
@@ -55,6 +62,13 @@ export interface SafeFetchOptions {
   maxRedirects?: number;
   /** Accept header; defaults to web pages. The job scraper also accepts RSS/Atom feeds. */
   accept?: string;
+  /** HTTP method; defaults to GET. HEAD implies `headersOnly`. */
+  method?: "GET" | "HEAD";
+  /**
+   * Stop after the final response's status (link checks): skip the
+   * content-type allow-list and never read the body (body is "").
+   */
+  headersOnly?: boolean;
 }
 
 /** dns.lookup can't be aborted, so race it against the timeout signal. */
@@ -136,6 +150,8 @@ export async function safeFetchText(
   const maxBytes = opts.maxBytes ?? MAX_BODY_BYTES;
   const contentTypes = opts.contentTypes ?? PAGE_CONTENT_TYPES;
   const maxRedirects = opts.maxRedirects ?? MAX_REDIRECTS;
+  const method = opts.method ?? "GET";
+  const headersOnly = opts.headersOnly === true || method === "HEAD";
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
@@ -152,9 +168,15 @@ export async function safeFetchText(
       let addresses: { address: string }[];
       try {
         addresses = await raceAbort(deps.lookup(check.host), controller.signal);
-      } catch {
+      } catch (err: unknown) {
         if (controller.signal.aborted) return timedOut();
-        return { ok: false, reason: "dns_error", detail: "The site's address could not be found." };
+        const code = (err as { code?: unknown } | null)?.code;
+        return {
+          ok: false,
+          reason: "dns_error",
+          detail: "The site's address could not be found.",
+          ...(typeof code === "string" ? { dnsCode: code } : {}),
+        };
       }
       const resolved = checkResolvedAddresses(addresses.map((a) => a.address));
       if (!resolved.ok) return { ok: false, reason: "blocked_address", detail: resolved.reason };
@@ -163,7 +185,7 @@ export async function safeFetchText(
       let res: Response;
       try {
         res = await deps.fetch(check.url.href, {
-          method: "GET",
+          method,
           redirect: "manual",
           signal: controller.signal,
           cache: "no-store",
@@ -199,6 +221,10 @@ export async function safeFetchText(
 
       const contentTypeHeader = res.headers.get("content-type") ?? "";
       const contentType = contentTypeHeader.split(";")[0].trim().toLowerCase();
+      if (headersOnly) {
+        await cancelBody(res);
+        return { ok: true, finalUrl: check.url.href, status: res.status, contentType, body: "", truncated: false };
+      }
       if (!contentTypes.includes(contentType)) {
         await cancelBody(res);
         return {

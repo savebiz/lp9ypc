@@ -14,9 +14,19 @@ export interface OverviewQueues {
   careerIdeas: number;
   sourceProblems: number;
   testAccounts: number;
+  /** New feedback items; null when the feedback table isn't set up yet (the line is hidden). */
+  newFeedback: number | null;
 }
 
-export default function OverviewTab({ jobs, members, careerPaths, memberPaths, queues, audit, jobSources, onGoTo }: {
+/** A live job whose Apply link has 2 or more open "link" reports (Phase 3.2). */
+export interface BrokenLinkJob {
+  job: Job;
+  reports: number;
+  /** Failed checks in a row from the link checker, when known. */
+  failCount: number | null;
+}
+
+export default function OverviewTab({ jobs, members, careerPaths, memberPaths, queues, audit, jobSources, brokenLinks = [], onGoTo, onFixJob }: {
   jobs: Job[];
   members: Profile[];
   careerPaths: CareerPath[];
@@ -24,7 +34,10 @@ export default function OverviewTab({ jobs, members, careerPaths, memberPaths, q
   queues: OverviewQueues;
   audit: AdminAuditEntry[];
   jobSources: JobSource[];
+  brokenLinks?: BrokenLinkJob[];
   onGoTo: (tab: Tab) => void;
+  /** Opens the Jobs tab with this job in the editor. */
+  onFixJob?: (jobId: string) => void;
 }) {
   const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const newThisWeek = members.filter((m) => new Date(m.created_at).getTime() > weekAgo).length;
@@ -45,11 +58,14 @@ export default function OverviewTab({ jobs, members, careerPaths, memberPaths, q
     { n: queues.openReports, label: "Open reports from members", tab: "moderation", none: "No open reports" },
     { n: queues.careerIdeas, label: "Career path ideas to review", tab: "ideas", none: "No new ideas" },
     { n: queues.sourceProblems, label: "Job sources with a problem", tab: "sources", none: "All job sources fine" },
+    ...(queues.newFeedback !== null
+      ? [{ n: queues.newFeedback, label: "New feedback from members", tab: "feedback" as Tab, none: "No new feedback" }]
+      : []),
     ...(queues.testAccounts > 0
       ? [{ n: queues.testAccounts, label: "Test accounts to delete before launch", tab: "members" as Tab, none: "" }]
       : []),
   ];
-  const waiting = queueLinks.reduce((sum, q) => sum + q.n, 0);
+  const waiting = queueLinks.reduce((sum, q) => sum + q.n, 0) + brokenLinks.length;
 
   return (
     <div className="stack-lg">
@@ -66,6 +82,22 @@ export default function OverviewTab({ jobs, members, careerPaths, memberPaths, q
           {waiting === 0 ? "You're all caught up." : "Tap a line to go straight to it."}
         </p>
         <ul className={styles.queueList}>
+          {/* Broken Apply links come first: applying is the most important thing members do here. */}
+          {brokenLinks.map(({ job, reports, failCount }) => (
+            <li key={`link-${job.id}`}>
+              <button type="button" className={`${styles.queueLink} ${styles.queueLinkOn}`}
+                onClick={() => (onFixJob ? onFixJob(job.id) : onGoTo("feedback"))}>
+                <span className={styles.queueCount}>{reports}</span>
+                <span className={styles.queueLabel}>
+                  Apply link may be broken: {job.title}
+                  <span className="small muted" style={{ display: "block" }}>
+                    {reports} open reports{failCount && failCount >= 2 ? ` · the link checker couldn't open it ${failCount} times in a row` : ""}. Tap to fix the link.
+                  </span>
+                </span>
+                <ChevronRight size={18} aria-hidden="true" />
+              </button>
+            </li>
+          ))}
           {queueLinks.map((q) => (
             <li key={q.label}>
               <button type="button" className={`${styles.queueLink}${q.n > 0 ? ` ${styles.queueLinkOn}` : ""}`} onClick={() => onGoTo(q.tab)}>
@@ -124,6 +156,11 @@ function describe(e: AdminAuditEntry, memberName: Map<string, string>, sourceNam
       const n = typeof d.inserted === "number" ? d.inserted : 0;
       const result = typeof d.status === "string" ? RUN_RESULT[d.status] ?? d.status : "";
       return `${who} ran the job finder on ${src}${result ? ` — ${result}` : ""}, ${n} new job${n === 1 ? "" : "s"} for review`;
+    }
+    case "feedback.update": {
+      const label: Record<string, string> = { new: "New", looking: "Looking into it", fixed: "Fixed", not_now: "Not now" };
+      const s = typeof d.status === "string" ? label[d.status] : undefined;
+      return s ? `${who} updated a feedback item (now: ${s})` : `${who} updated a feedback item`;
     }
     default:
       return `${who}: ${e.action.replace(/[._]/g, " ")}`;

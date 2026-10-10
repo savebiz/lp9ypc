@@ -12,8 +12,9 @@ import { CAREER_GOAL_LABELS, suggestPathSlugs } from "@/lib/career-match";
 import { firstName, shortPathName } from "@/lib/utils";
 import EventCard from "@/components/news/EventCard";
 import AnnouncementItem from "@/components/news/AnnouncementItem";
+import FeedbackPanel from "@/components/feedback/FeedbackPanel";
 import { NEWS_COLUMNS, type NewsItem } from "@/components/news/news";
-import type { CareerPath, CareerPathSuggestion, Community, Job, MemberCareerPath, Profile } from "@/types";
+import type { CareerPath, CareerPathSuggestion, Community, Job, MemberCareerPath, MyFeedback, Profile } from "@/types";
 
 export const metadata = { title: "My dashboard · LP9 YPC" };
 
@@ -23,7 +24,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   if (!user) redirect("/login?next=/dashboard");
 
   const now = new Date().toISOString();
-  const [profileRes, pathsRes, savedRes, jobsRes, annRes, allPathsRes, suggestionsRes, communitiesRes, eventsRes] = await Promise.all([
+  const [profileRes, pathsRes, savedRes, jobsRes, annRes, allPathsRes, suggestionsRes, communitiesRes, eventsRes, feedbackRes] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
     supabase.from("member_career_paths").select("*, career_paths(*)").eq("member_id", user.id),
     supabase.from("saved_jobs").select("job_id, jobs(*, career_paths(*))").eq("member_id", user.id).order("created_at", { ascending: false }),
@@ -38,6 +39,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     supabase.from("community_members").select("role, communities(*)").eq("member_id", user.id),
     supabase.from("announcements").select(NEWS_COLUMNS).eq("is_active", true).eq("kind", "event")
       .or(`starts_at.gte."${now}",ends_at.gte."${now}"`).order("starts_at", { ascending: true }).limit(2),
+    // Phase 3.2: the member's own feedback. If the view isn't there yet, the panel is hidden.
+    supabase.from("my_feedback").select("id, kind, message, page_path, target_type, target_id, status, public_reason, created_at, updated_at")
+      .order("created_at", { ascending: false }).limit(5),
   ]);
 
   const profile = profileRes.data as Profile | null;
@@ -50,6 +54,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const announcements = (annRes.data ?? []) as unknown as NewsItem[];
   const events = (eventsRes.data ?? []) as unknown as NewsItem[];
   const allPaths = (allPathsRes.data ?? []) as CareerPath[];
+  const myFeedback = feedbackRes.error ? [] : ((feedbackRes.data ?? []) as MyFeedback[]);
 
   const pathIds = new Set(memberPaths.map((m) => m.career_path_id));
   const matched = latest.filter((j) => j.career_path_id && pathIds.has(j.career_path_id));
@@ -171,6 +176,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               </div>
             </section>
           )}
+
+          <FeedbackPanel items={myFeedback} />
 
           <section className="panel" aria-labelledby="profile-h">
             <div className="panel-head">

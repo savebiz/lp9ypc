@@ -11,11 +11,13 @@ import JobEditor from "./JobEditor";
 import { writeProblem, type TabActions } from "./shared";
 
 /** Approved jobs (and jobs from before the review queue existed). Pending/rejected ones live in the Review queue. */
-export default function JobsTab({ jobs, careerPaths, jobSources, adminId, onError, onSuccess, onChanged }: TabActions & {
+export default function JobsTab({ jobs, careerPaths, jobSources, adminId, editId, onError, onSuccess, onChanged }: TabActions & {
   jobs: Job[]; careerPaths: CareerPath[]; jobSources: JobSource[]; adminId: string;
+  /** Open this job in the editor straight away ("Fix it now" on the Feedback tab). */
+  editId?: string | null;
 }) {
-  const [editing, setEditing] = useState<Job | null>(null);
-  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<Job | null>(() => (editId ? jobs.find((j) => j.id === editId) ?? null : null));
+  const [showForm, setShowForm] = useState(() => !!editId && jobs.some((j) => j.id === editId));
   const sourceName = new Map(jobSources.map((s) => [s.id, s.name]));
 
   function openNew() {

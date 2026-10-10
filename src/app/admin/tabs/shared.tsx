@@ -3,7 +3,7 @@
 import { CircleAlert } from "lucide-react";
 import type {
   AdminAuditEntry, AgentRun, Announcement, CareerPath, CareerPathCandidate, Community, CommunityMember, CommunityOverview,
-  Job, JobSource, Profile, Reply, Report, Thread,
+  Feedback, Job, JobSource, LinkHealth, Profile, Reply, Report, Thread,
 } from "@/types";
 
 /** Everything the admin page loads (admin-readable under RLS). Phase 2 lists may be empty. */
@@ -29,6 +29,10 @@ export interface AdminData {
   agentRuns: AgentRun[];
   /** Newest 50 admin_audit rows (Phase 3.1). */
   audit: AdminAuditEntry[];
+  /** Member feedback, newest first (Phase 3.2). null = the feedback table isn't set up yet: hide feedback parts. */
+  feedback: Feedback[] | null;
+  /** Apply-link check results (Phase 3.2). null = not set up yet. */
+  linkHealth: LinkHealth[] | null;
 }
 
 /** Props every tab gets for feedback and refreshing server data. */
@@ -109,10 +113,19 @@ type JsonResult<T> = { ok: true; data: T } | { ok: false; error: string };
  * turns every failure into a friendly sentence.
  */
 export async function postJson<T = Record<string, unknown>>(url: string, body: unknown): Promise<JsonResult<T>> {
+  return sendJson<T>("POST", url, body);
+}
+
+/** PATCHes JSON to one of our API routes, with the same friendly errors as postJson. */
+export async function patchJson<T = Record<string, unknown>>(url: string, body: unknown): Promise<JsonResult<T>> {
+  return sendJson<T>("PATCH", url, body);
+}
+
+async function sendJson<T>(method: "POST" | "PATCH", url: string, body: unknown): Promise<JsonResult<T>> {
   let res: Response;
   try {
     res = await fetch(url, {
-      method: "POST",
+      method,
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
       body: JSON.stringify(body ?? {}),

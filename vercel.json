@@ -6,6 +6,7 @@
   "crons": [
     { "path": "/api/cron/career-research", "schedule": "0 3 * * *" },
     { "path": "/api/cron/moderation-sweep", "schedule": "0 4 * * *" },
-    { "path": "/api/cron/job-scraper", "schedule": "0 6 * * *" }
+    { "path": "/api/cron/job-scraper", "schedule": "0 6 * * *" },
+    { "path": "/api/cron/link-check", "schedule": "0 5 * * *" }
   ]
 }

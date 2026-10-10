@@ -1,9 +1,10 @@
 -- ============================================================================
 -- LP9 YPC — post-setup verification (read-only; changes nothing)
 -- ============================================================================
--- Run in the Supabase SQL Editor after ALL FIVE migrations (initial schema,
--- community_agents, community_social, job_referral_flag, replyto_audit_flyers).
--- 38 checks. Every row should show ok = true. If any row says false, stop and send the
+-- Run in the Supabase SQL Editor after ALL SIX migrations (initial schema,
+-- community_agents, community_social, job_referral_flag, replyto_audit_flyers,
+-- feedback).
+-- 42 checks. Every row should show ok = true. If any row says false, stop and send the
 -- result over before going further.
 -- ============================================================================
 
@@ -30,8 +31,8 @@ select '04. signup trigger is installed on auth.users',
                   and tgrelid = 'auth.users'::regclass
                   and not tgisinternal)
 union all
-select '05. all 48 security policies are installed (20 + 24 + 3 + 1 from migrations 1-5)',
-       (select count(*) = 48 from pg_policies where schemaname = 'public')
+select '05. all 50 security policies are installed (20 + 24 + 3 + 1 + 2 from migrations 1-6)',
+       (select count(*) = 50 from pg_policies where schemaname = 'public')
 union all
 select '06. members CANNOT change their own role (blocks self-promotion to admin)',
        not has_column_privilege('authenticated', 'public.profiles', 'role', 'UPDATE')
@@ -165,4 +166,28 @@ union all
 select '38. only admins can upload, change, delete or list flyers',
        (select count(*) = 4 from pg_policies where schemaname = 'storage' and tablename = 'objects'
          and policyname like 'event-flyers:%' and (coalesce(qual, '') || coalesce(with_check, '')) like '%is_admin%')
+union all
+select '39. feedback: row-level security ON, only admins can read it, nobody writes from the browser',
+       coalesce((select relrowsecurity from pg_class where oid = 'public.feedback'::regclass), false)
+       and not has_table_privilege('authenticated', 'public.feedback', 'INSERT')
+       and not has_table_privilege('authenticated', 'public.feedback', 'UPDATE')
+       and not has_table_privilege('anon', 'public.feedback', 'SELECT')
+       and exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'feedback'
+                    and cmd = 'SELECT' and qual like '%is_admin%')
+union all
+select '40. members can read their own feedback status only through my_feedback (no admin notes)',
+       has_table_privilege('authenticated', 'public.my_feedback', 'SELECT')
+       and not has_table_privilege('anon', 'public.my_feedback', 'SELECT')
+       and not exists (select 1 from information_schema.columns
+                        where table_schema = 'public' and table_name = 'my_feedback' and column_name = 'admin_note')
+union all
+select '41. only the server can file feedback (rate-limited submit_feedback)',
+       not has_function_privilege('authenticated', 'public.submit_feedback(uuid, text, text, text, text, uuid, integer, interval)', 'EXECUTE')
+       and has_function_privilege('service_role', 'public.submit_feedback(uuid, text, text, text, text, uuid, integer, interval)', 'EXECUTE')
+union all
+select '42. link checks: admins-only table, and the run log accepts link_check',
+       coalesce((select relrowsecurity from pg_class where oid = 'public.link_health'::regclass), false)
+       and not has_table_privilege('anon', 'public.link_health', 'SELECT')
+       and exists (select 1 from pg_constraint where conname = 'agent_runs_agent_check'
+                    and pg_get_constraintdef(oid) like '%link_check%')
 order by 1;

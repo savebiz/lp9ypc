@@ -272,7 +272,7 @@ export interface ModerationLogEntry {
 
 export interface AgentRun {
   id: string;
-  agent: "job_scraper" | "career_research" | "moderation_sweep";
+  agent: "job_scraper" | "career_research" | "moderation_sweep" | "link_check";
   status: "running" | "ok" | "error" | "skipped";
   started_at: string;
   finished_at: string | null;
@@ -293,4 +293,42 @@ export interface AdminAuditEntry {
   target_id: string | null;
   details: Record<string, unknown>;
   created_at: string;
+}
+
+// -- Migration 6: feedback ----------------------------------------------------
+export type FeedbackKind = "link" | "wrong_info" | "broken" | "idea";
+export type FeedbackStatus = "new" | "looking" | "fixed" | "not_now";
+export type FeedbackTargetType = "job" | "announcement" | "career_path" | "community";
+
+/** Admin view of a feedback row (table public.feedback; admins only). */
+export interface Feedback {
+  id: string;
+  source: "member" | "assistant";
+  kind: FeedbackKind;
+  message: string | null;
+  page_path: string | null;
+  target_type: FeedbackTargetType | null;
+  target_id: string | null;
+  submitter_id: string | null;
+  status: FeedbackStatus;
+  admin_note: string | null;
+  public_reason: string | null;
+  handled_by: string | null;
+  handled_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** What a member sees of their own feedback (view public.my_feedback). */
+export type MyFeedback = Pick<
+  Feedback,
+  "id" | "kind" | "message" | "page_path" | "target_type" | "target_id" | "status" | "public_reason" | "created_at" | "updated_at"
+>;
+
+export interface LinkHealth {
+  job_id: string;
+  fail_count: number;
+  last_status: string | null;
+  last_http: number | null;
+  checked_at: string;
 }

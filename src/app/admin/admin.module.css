@@ -229,3 +229,21 @@
   /* Keep the thumbnail beside the title instead of on its own row. */
   .flyerThumb + :global(.grow) { flex: 1 1 calc(100% - 76px); }
 }
+
+/* Feedback tab (Phase 3.2). */
+.fbFilters { display: grid; gap: 12px; align-items: end; }
+@media (min-width: 760px) { .fbFilters { grid-template-columns: 1fr 1fr auto; } }
+.fbNote {
+  margin-top: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+  padding: 10px 12px;
+  border-radius: var(--r-card);
+  background: var(--cream);
+}
+.fbStatusBtns { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.fbStatusBtns > button { flex: 1 1 auto; }
+.fbStatusBtns > button[aria-pressed="true"] { background: var(--blue-soft); border-color: var(--blue); color: var(--blue-dk); }
+.fbReason { display: grid; gap: 6px; margin-top: 12px; }
+@media (min-width: 700px) { .fbStatusBtns > button { flex: 0 0 auto; } }

@@ -4,6 +4,8 @@ import ScopeBadge from "./ScopeBadge";
 import Flyer from "./Flyer";
 import { eventWhen, flyerOf, type NewsItem } from "./news";
 import styles from "./EventCard.module.css";
+import FeedbackLink from "@/components/feedback/FeedbackLink";
+import { FEEDBACK_COPY } from "@/components/feedback/feedback";
 
 interface EventCardProps {
   event: NewsItem;
@@ -98,6 +100,13 @@ export default function EventCard({ event, headingLevel = 3, compact = false, fl
             More info <ArrowUpRight size={18} aria-hidden="true" />
           </a>
         )}
+
+        <FeedbackLink
+          href={`/feedback?event=${event.id}&kind=wrong_info`}
+          label={`${FEEDBACK_COPY.eventLink} Tell us about ${event.title}`}
+        >
+          {FEEDBACK_COPY.eventLink}
+        </FeedbackLink>
       </div>
     </article>
   );

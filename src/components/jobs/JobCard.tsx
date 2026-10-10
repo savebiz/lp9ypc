@@ -2,12 +2,15 @@ import Link from "next/link";
 import { Bookmark, BookmarkCheck, CalendarClock, Clock, MapPin } from "lucide-react";
 import type { Job } from "@/types";
 import ApplyButton from "@/components/jobs/ApplyButton";
+import FeedbackLink from "@/components/feedback/FeedbackLink";
+import { FEEDBACK_COPY } from "@/components/feedback/feedback";
 import { PathIcon } from "@/components/ui/icons";
 import {
   ENGAGEMENT_LABELS,
   WORK_MODE_LABELS,
   closesLabel,
   isDeadlineSoon,
+  isExpired,
   isNew,
   shortPathName,
   timeAgo,
@@ -75,6 +78,14 @@ export default function JobCard({ job, isSaved, onToggleSave, showDescription = 
       </div>
 
       <ApplyButton link={job.application_link} deadline={job.deadline} title={job.title} referral={!!job.is_referral} />
+      {!isExpired(job.deadline) && (
+        <FeedbackLink
+          href={`/feedback?job=${job.id}&kind=link`}
+          label={`${FEEDBACK_COPY.jobLink} Tell us about the Apply link for ${job.title}`}
+        >
+          {FEEDBACK_COPY.jobLink}
+        </FeedbackLink>
+      )}
     </article>
   );
 }

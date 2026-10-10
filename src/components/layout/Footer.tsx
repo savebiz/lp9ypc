@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { FooterLogo } from "@/components/ui/YPCMark";
 import { MISSION, SITE } from "@/content/site";
+import FooterFeedbackLink from "@/components/feedback/FooterFeedbackLink";
 
 export default function Footer() {
   return (
@@ -25,6 +26,7 @@ export default function Footer() {
           <div>
             <h2>Support</h2>
             <ul>
+              <li><FooterFeedbackLink /></li>
               <li><a href={`mailto:${SITE.contactEmail}`}>{SITE.contactEmail}</a></li>
               <li><Link href="/privacy">Privacy policy</Link></li>
               <li><Link href="/guidelines">Community guidelines</Link></li>

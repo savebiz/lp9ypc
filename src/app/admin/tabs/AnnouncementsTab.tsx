@@ -48,12 +48,15 @@ function toForm(a: Announcement): AnnForm {
 }
 
 /** News & events: announcements and events at parish, provincial, regional or national level. */
-export default function AnnouncementsTab({ announcements, adminId, onError, onSuccess, onChanged }: TabActions & {
+export default function AnnouncementsTab({ announcements, adminId, editId, onError, onSuccess, onChanged }: TabActions & {
   announcements: Announcement[]; adminId: string;
+  /** Open this post in the editor straight away ("Fix it now" on the Feedback tab). */
+  editId?: string | null;
 }) {
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<Announcement | null>(null);
-  const [form, setForm] = useState<AnnForm>(EMPTY);
+  const [initial] = useState(() => (editId ? announcements.find((a) => a.id === editId) ?? null : null));
+  const [showForm, setShowForm] = useState(!!initial);
+  const [editing, setEditing] = useState<Announcement | null>(initial);
+  const [form, setForm] = useState<AnnForm>(() => (initial ? toForm(initial) : EMPTY));
   const [errors, setErrors] = useState<FormErrors>({});
   const [saving, setSaving] = useState(false);
   const [picked, setPicked] = useState<PickedFlyer | null>(null);
