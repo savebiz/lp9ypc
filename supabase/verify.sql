@@ -1,9 +1,9 @@
 -- ============================================================================
 -- LP9 YPC — post-setup verification (read-only; changes nothing)
 -- ============================================================================
--- Run in the Supabase SQL Editor after BOTH migrations (initial schema +
--- community_agents).
--- 27 checks. Every row should show ok = true. If any row says false, stop and send the
+-- Run in the Supabase SQL Editor after ALL THREE migrations (initial schema,
+-- community_agents, community_social).
+-- 33 checks. Every row should show ok = true. If any row says false, stop and send the
 -- result over before going further.
 -- ============================================================================
 
@@ -30,8 +30,8 @@ select '04. signup trigger is installed on auth.users',
                   and tgrelid = 'auth.users'::regclass
                   and not tgisinternal)
 union all
-select '05. all 44 security policies are installed (20 + 24 from migration 2)',
-       (select count(*) = 44 from pg_policies where schemaname = 'public')
+select '05. all 47 security policies are installed (20 + 24 + 3 from migrations 1-3)',
+       (select count(*) = 47 from pg_policies where schemaname = 'public')
 union all
 select '06. members CANNOT change their own role (blocks self-promotion to admin)',
        not has_column_privilege('authenticated', 'public.profiles', 'role', 'UPDATE')
@@ -67,7 +67,7 @@ select '14. every job must have an http(s) Apply link',
                 where conname = 'jobs_application_link_http'
                   and conrelid = 'public.jobs'::regclass)
 union all
-select '15. no member is an admin yet (expected until you promote yourself)',
+select '15. no member is an admin yet (FALSE is expected once you have promoted yourself)',
        (select count(*) = 0 from public.profiles where role = 'admin')
 union all
 select '16. all 11 Phase 2 tables exist with row-level security ON',
@@ -117,4 +117,32 @@ union all
 select '27. only the server can claim posting slots (atomic rate limit)',
        not has_function_privilege('authenticated', 'public.claim_post_slot(uuid, uuid, uuid, text, text, integer, interval)', 'EXECUTE')
        and has_function_privilege('authenticated', 'public.post_moderation_notes(text, uuid[])', 'EXECUTE')
+union all
+select '28. likes table exists with row-level security ON',
+       coalesce((select relrowsecurity from pg_class where oid = 'public.post_likes'::regclass), false)
+union all
+select '29. members can like and unlike, but never edit a like',
+       has_column_privilege('authenticated', 'public.post_likes', 'target_id', 'INSERT')
+       and not has_column_privilege('authenticated', 'public.post_likes', 'community_id', 'INSERT')
+       and has_table_privilege('authenticated', 'public.post_likes', 'DELETE')
+       and not has_table_privilege('authenticated', 'public.post_likes', 'UPDATE')
+       and not has_table_privilege('anon', 'public.post_likes', 'SELECT')
+union all
+select '30. a like can only be added for yourself, on a visible post in your community',
+       exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'post_likes'
+                and cmd = 'INSERT' and with_check like '%auth.uid()%' and with_check like '%can_like%')
+union all
+select '31. like counts and reply nesting are kept by triggers',
+       exists (select 1 from pg_trigger where tgname = 'post_likes_count' and not tgisinternal)
+       and exists (select 1 from pg_trigger where tgname = 'post_likes_set_community' and not tgisinternal)
+       and exists (select 1 from pg_trigger where tgname = 'replies_set_depth' and not tgisinternal)
+union all
+select '32. members can read like counts, nesting and edit markers, but not write posts',
+       has_column_privilege('authenticated', 'public.threads', 'like_count', 'SELECT')
+       and has_column_privilege('authenticated', 'public.replies', 'parent_id', 'SELECT')
+       and has_column_privilege('authenticated', 'public.replies', 'edited_at', 'SELECT')
+       and not has_table_privilege('authenticated', 'public.replies', 'UPDATE')
+union all
+select '33. replies nest at most 3 levels deep',
+       exists (select 1 from pg_constraint where conname = 'replies_depth_range')
 order by 1;

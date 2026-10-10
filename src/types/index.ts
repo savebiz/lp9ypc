@@ -205,6 +205,9 @@ export interface Thread extends PostModeration {
   last_activity_at: string;
   created_at: string;
   updated_at: string;
+  // Phase 3 (migration 20261010120000_community_social)
+  like_count: number;
+  edited_at: string | null;
 }
 
 export interface Reply extends PostModeration {
@@ -215,6 +218,20 @@ export interface Reply extends PostModeration {
   body: string;
   created_at: string;
   updated_at: string;
+  // Phase 3: replies to replies (depth 0-2), likes, edit marker
+  parent_id: string | null;
+  depth: number;
+  like_count: number;
+  edited_at: string | null;
+}
+
+/** One member's like on a post (Phase 3). community_id is set by the database. */
+export interface PostLike {
+  member_id: string;
+  target_type: "thread" | "reply";
+  target_id: string;
+  community_id: string;
+  created_at: string;
 }
 
 export interface Report {
