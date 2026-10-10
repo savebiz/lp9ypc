@@ -12,7 +12,7 @@
  * Only the post text and the community name are sent — never author identity.
  * Relative imports only, so the unit tests can load it.
  */
-import { generateJson, getGeminiKey } from "./gemini.ts";
+import { generateJson, getGeminiKey, isBusyFailure, isQuotaFailure } from "./gemini.ts";
 import { fenceUntrusted, emptyUsage, type GeminiUsage } from "./gemini-parse.ts";
 import { MODERATION_CATEGORIES, checkLocalRules, isModerationCategory } from "./moderation-rules.ts";
 
@@ -31,6 +31,9 @@ export interface ModerationResult {
 }
 
 export const MODERATION_TIMEOUT_MS = 8_000;
+/** Budget for the background check scheduled after the response (Phase 3 instant posting). */
+export const BACKGROUND_MODERATION_TIMEOUT_MS = 25_000;
+export const MODERATION_MAX_OUTPUT_TOKENS = 1024; // headroom for "low" thinking so long posts are not held for MAX_TOKENS
 const MAX_REASON = 200;
 
 export const MODERATION_SCHEMA: Record<string, unknown> = {
@@ -112,7 +115,10 @@ function unavailable(why: string): ModerationResult {
  * Same as moderatePost() but also returns token usage (for the moderation
  * sweep's agent_runs row). Routes should use moderatePost().
  */
-export async function moderatePostDetailed(input: ModerationInput): Promise<ModerationResult & { usage: GeminiUsage }> {
+export async function moderatePostDetailed(
+  input: ModerationInput,
+  opts: { timeoutMs?: number } = {},
+): Promise<ModerationResult & { usage: GeminiUsage }> {
   const text = [input.kind === "thread" ? input.title ?? "" : "", input.body].join("\n");
 
   const local = checkLocalRules(text);
@@ -127,8 +133,8 @@ export async function moderatePostDetailed(input: ModerationInput): Promise<Mode
     user: buildUserTurn(input),
     schema: MODERATION_SCHEMA,
     thinkingLevel: "low",
-    maxOutputTokens: 2048,
-    timeoutMs: MODERATION_TIMEOUT_MS,
+    maxOutputTokens: MODERATION_MAX_OUTPUT_TOKENS,
+    timeoutMs: opts.timeoutMs ?? MODERATION_TIMEOUT_MS,
     safetyOff: true,
   });
 
@@ -147,7 +153,12 @@ export async function moderatePostDetailed(input: ModerationInput): Promise<Mode
     // answer) must not become a way to skip the check: hold for a human.
     // Only outages (no key, network/HTTP error, timeout) fail open.
     if (res.reason === "max_tokens" || res.reason === "bad_json") return { ...cantRead(), usage };
-    return { ...unavailable(res.reason.replace("_", " ")), usage };
+    const why = isQuotaFailure(res)
+      ? "Gemini quota exceeded"
+      : isBusyFailure(res)
+        ? "AI service busy"
+        : res.reason.replace("_", " ");
+    return { ...unavailable(why), usage };
   }
 
   const parsed = parseModerationOutput(res.data);
@@ -156,9 +167,9 @@ export async function moderatePostDetailed(input: ModerationInput): Promise<Mode
 }
 
 /** Contract function used by POST /api/community/threads and /replies. Never throws. */
-export async function moderatePost(input: ModerationInput): Promise<ModerationResult> {
+export async function moderatePost(input: ModerationInput, opts: { timeoutMs?: number } = {}): Promise<ModerationResult> {
   try {
-    const { decision, categories, reason, source } = await moderatePostDetailed(input);
+    const { decision, categories, reason, source } = await moderatePostDetailed(input, opts);
     return { decision, categories, reason, source };
   } catch {
     return unavailable("error");

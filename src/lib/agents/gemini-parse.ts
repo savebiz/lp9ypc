@@ -217,3 +217,48 @@ export function fenceUntrusted(text: string): string {
 export function isRetryableStatus(status: number): boolean {
   return status === 429 || status === 500 || status === 503;
 }
+
+/**
+ * What kind of HTTP failure Gemini returned. Decides whether a retry (or the
+ * fallback model) can help:
+ *   - "quota":      429 that won't clear by waiting a few seconds (daily cap,
+ *                   "limit: 0", or "check your plan and billing"). Never retried.
+ *   - "rate_limit": 429 per-minute limit. Retried; the fallback model may help.
+ *   - "overloaded": 503, or any 5xx that says the model is overloaded. Retried;
+ *                   the fallback model is tried once.
+ *   - "server":     other 5xx (500/502/504). Retried.
+ *   - "other":      anything else (400, 401, 403, 404…). Not retried.
+ */
+export type GeminiErrorKind = "quota" | "rate_limit" | "overloaded" | "server" | "other";
+
+export interface GeminiErrorInfo {
+  kind: GeminiErrorKind;
+  /** RetryInfo.retryDelay from Google, when present. */
+  retryDelayMs?: number;
+}
+
+/**
+ * Classifies a failed generateContent response from its status and (capped)
+ * error body. Pure. The body is only inspected, never logged — Google's error
+ * bodies can echo request details.
+ */
+export function classifyGeminiError(status: number, bodyText: string): GeminiErrorInfo {
+  const body = String(bodyText ?? "").slice(0, 16_384);
+  const delay = /"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(body);
+  const retryDelayMs = delay ? Math.round(Number(delay[1]) * 1000) : undefined;
+
+  if (status === 429) {
+    const perMinute = /PerMinute|per[ _-]minute/i.test(body);
+    const hardCap = /limit:\s*0\b|PerDay|per[ _-]day|daily/i.test(body);
+    const billing = /billing|check your plan/i.test(body);
+    if (hardCap) return { kind: "quota", retryDelayMs };
+    if (perMinute) return { kind: "rate_limit", retryDelayMs };
+    if (billing) return { kind: "quota", retryDelayMs };
+    return { kind: "rate_limit", retryDelayMs };
+  }
+  if (status >= 500 && status <= 599) {
+    if (status === 503 || /overloaded|UNAVAILABLE/i.test(body)) return { kind: "overloaded", retryDelayMs };
+    return { kind: "server", retryDelayMs };
+  }
+  return { kind: "other" };
+}

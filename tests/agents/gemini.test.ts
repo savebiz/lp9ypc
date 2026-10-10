@@ -121,7 +121,7 @@ describe("generateJson / generateGrounded (fetch stubbed)", () => {
   test("does not retry a 400, and reports bad JSON / timeouts distinctly", async () => {
     process.env.GEMINI_API_KEY = "k";
     let calls = stubFetch(() => jsonResponse({ error: {} }, 400));
-    assert.deepEqual(await generateJson({ ...J, timeoutMs: 1000 }), { ok: false, reason: "http_error", status: 400 });
+    assert.deepEqual(await generateJson({ ...J, timeoutMs: 1000 }), { ok: false, reason: "http_error", status: 400, errorKind: "other" });
     assert.equal(calls.length, 1);
     restoreFetch();
 

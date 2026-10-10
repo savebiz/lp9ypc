@@ -2,13 +2,13 @@
  * GET /api/cron/job-scraper — daily 06:00 UTC (vercel.json).
  * Authorization: Bearer $CRON_SECRET (constant-time check; 503 if unset).
  *
- * Runs at most 3 active sources (least recently run first), in parallel
+ * Structured job data (JSON-LD / RSS) is read first without AI; Gemini is
+ * only a fallback. Runs at most 3 active sources (least recently run first), in parallel
  * within one 55 s budget. Found jobs land as review_status 'pending'.
  * Writes one agent_runs row.
  */
 import { MAX_SOURCES_PER_RUN, loadCatalogue, runJobSource } from "@/lib/agents/job-scraper";
 import { finishAgentRun, startAgentRun } from "@/lib/agents/agent-run";
-import { getGeminiKey } from "@/lib/agents/gemini";
 import { addUsage, emptyUsage } from "@/lib/agents/gemini-parse";
 import { checkCron, fail, json, requireServiceRole } from "@/app/api/_lib/http";
 
@@ -26,12 +26,8 @@ export async function GET(req: Request) {
 
   const runId = await startAgentRun("job_scraper", { trigger: "cron" }, admin);
 
-  if (!getGeminiKey()) {
-    const message = "GEMINI_API_KEY is not set; no sources were read.";
-    await finishAgentRun("job_scraper", runId, { status: "skipped", error: message, details: { trigger: "cron" } }, admin);
-    return json({ ok: true, status: "skipped", message });
-  }
-
+  // No Gemini key is fine: sources with structured job data (JSON-LD / RSS)
+  // are read without AI; the others report it in their last_error.
   const { data, error } = await admin
     .from("job_sources")
     .select("id, name, url")

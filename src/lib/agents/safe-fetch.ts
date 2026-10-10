@@ -53,6 +53,8 @@ export interface SafeFetchOptions {
   maxBytes?: number;
   contentTypes?: string[];
   maxRedirects?: number;
+  /** Accept header; defaults to web pages. The job scraper also accepts RSS/Atom feeds. */
+  accept?: string;
 }
 
 /** dns.lookup can't be aborted, so race it against the timeout signal. */
@@ -167,7 +169,7 @@ export async function safeFetchText(
           cache: "no-store",
           headers: {
             "User-Agent": BOT_USER_AGENT,
-            Accept: "text/html,application/xhtml+xml,text/plain;q=0.9",
+            Accept: opts.accept ?? "text/html,application/xhtml+xml,text/plain;q=0.9",
             "Accept-Language": "en",
           },
         });

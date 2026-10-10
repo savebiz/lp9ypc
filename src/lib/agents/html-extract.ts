@@ -154,3 +154,42 @@ export function extractPlainText(body: string, pageUrl: string): ExtractedPage {
   }
   return { ...capText(text), links };
 }
+
+/** Characters of main-content text sent to the AI reader (Phase 3: was the full 60k page). */
+export const AI_TEXT_CHARS = 12_000;
+/** Below this, the "main" region is probably not where the jobs are; use the whole page text. */
+const MIN_MAIN_TEXT_CHARS = 400;
+const CHROME_TAGS = "header|nav|footer|aside|form|dialog";
+
+/**
+ * The page's main content region as HTML: the <main> element when there is
+ * one, otherwise <body> without header/nav/footer/aside/form/dialog blocks.
+ * A <base href> is kept so relative links still resolve the same way.
+ */
+export function mainContentHtml(html: string): string {
+  let s = String(html ?? "").replace(/\u0000/g, "");
+  s = s.replace(/<!--[\s\S]*?(?:-->|$)/g, " ");
+  s = s.replace(/<(script|style|noscript|svg|template|iframe|object|canvas)\b[\s\S]*?(?:<\/\1\s*>|$)/gi, " ");
+  const baseTag = /<base\b[^>]*>/i.exec(s)?.[0] ?? "";
+
+  const main = /<main\b[^>]*>([\s\S]*)<\/main\s*>/i.exec(s);
+  if (main) return baseTag + main[1];
+
+  const body = /<body\b[^>]*>([\s\S]*?)(?:<\/body\s*>|$)/i.exec(s);
+  let region = body ? body[1] : s;
+  region = region.replace(new RegExp(`<(${CHROME_TAGS})\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>`, "gi"), " ");
+  return baseTag + region;
+}
+
+/**
+ * Model-ready text for the AI fallback: the main content only, capped at
+ * `maxChars` (default 12k). `links` still lists every link on the WHOLE page,
+ * because the Apply-link allow-list must not shrink.
+ */
+export function extractMainContent(html: string, pageUrl: string, maxChars: number = AI_TEXT_CHARS): ExtractedPage {
+  const full = extractPage(html, pageUrl);
+  const main = extractPage(mainContentHtml(html), pageUrl);
+  const source = main.text.length >= MIN_MAIN_TEXT_CHARS ? main.text : full.text;
+  const truncated = source.length > maxChars || (source === full.text && full.truncated);
+  return { text: source.slice(0, maxChars), truncated, links: full.links };
+}
