@@ -74,7 +74,7 @@ export default function JobCard({ job, isSaved, onToggleSave, showDescription = 
         )}
       </div>
 
-      <ApplyButton link={job.application_link} deadline={job.deadline} title={job.title} />
+      <ApplyButton link={job.application_link} deadline={job.deadline} title={job.title} referral={!!job.is_referral} />
     </article>
   );
 }

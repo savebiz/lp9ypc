@@ -1,9 +1,9 @@
 -- ============================================================================
 -- LP9 YPC — post-setup verification (read-only; changes nothing)
 -- ============================================================================
--- Run in the Supabase SQL Editor after ALL THREE migrations (initial schema,
--- community_agents, community_social).
--- 33 checks. Every row should show ok = true. If any row says false, stop and send the
+-- Run in the Supabase SQL Editor after ALL FOUR migrations (initial schema,
+-- community_agents, community_social, job_referral_flag).
+-- 34 checks. Every row should show ok = true. If any row says false, stop and send the
 -- result over before going further.
 -- ============================================================================
 
@@ -145,4 +145,8 @@ select '32. members can read like counts, nesting and edit markers, but not writ
 union all
 select '33. replies nest at most 3 levels deep',
        exists (select 1 from pg_constraint where conname = 'replies_depth_range')
+union all
+select '34. jobs can be marked as referral links (is_referral column)',
+       exists (select 1 from information_schema.columns
+                where table_schema = 'public' and table_name = 'jobs' and column_name = 'is_referral')
 order by 1;

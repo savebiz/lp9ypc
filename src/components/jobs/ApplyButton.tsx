@@ -12,12 +12,15 @@ export default function ApplyButton({
   title,
   size = "md",
   hint = true,
+  referral = false,
 }: {
   link: string;
   deadline: string | null;
   title: string;
   size?: "md" | "lg";
   hint?: boolean;
+  /** The link is a referral link (admin-ticked); say so honestly under the button. */
+  referral?: boolean;
 }) {
   const href = safeHttpUrl(link);
 
@@ -41,7 +44,11 @@ export default function ApplyButton({
       >
         Apply now <ArrowUpRight size={20} aria-hidden="true" />
       </a>
-      {hint && <p className="apply-hint">Opens {hostnameOf(href)} in a new tab</p>}
+      {hint && (
+        <p className="apply-hint">
+          {referral ? <>Referral link via YPC · </> : null}Opens {hostnameOf(href)} in a new tab
+        </p>
+      )}
     </div>
   );
 }

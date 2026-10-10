@@ -74,7 +74,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 ? "The deadline for this role has passed."
                 : "Ready? This takes you straight to the official application page."}
             </p>
-            <ApplyButton link={job.application_link} deadline={job.deadline} title={job.title} size="lg" />
+            <ApplyButton link={job.application_link} deadline={job.deadline} title={job.title} size="lg" referral={!!job.is_referral} />
           </div>
 
           <dl className="facts">

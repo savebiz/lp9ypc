@@ -50,6 +50,8 @@ export interface Job {
   source_page_url?: string | null;
   dedupe_key?: string | null;
   review_status?: ReviewStatus;
+  // Migration 4: the Apply link is a referral link (members see a small note)
+  is_referral?: boolean;
 }
 
 export interface SavedJob {

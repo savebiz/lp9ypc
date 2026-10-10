@@ -39,6 +39,7 @@ export default function JobEditor({ job, careerPaths, adminId, approveOnSave = f
   const [form, setForm] = useState<JobForm>(job ? jobToForm(job) : EMPTY_JOB);
   const [formErrors, setFormErrors] = useState<Partial<Record<keyof JobForm, string>>>({});
   const [saving, setSaving] = useState(false);
+  const [isReferral, setIsReferral] = useState<boolean>(!!job?.is_referral);
 
   const set = (k: keyof JobForm, v: string) => { setForm((f) => ({ ...f, [k]: v })); setFormErrors((e) => ({ ...e, [k]: undefined })); };
 
@@ -64,6 +65,7 @@ export default function JobEditor({ job, careerPaths, adminId, approveOnSave = f
       salary_range: form.salary_range.trim() || null,
       description: form.description.trim() || null,
       application_link: safeHttpUrl(form.application_link)!,
+      is_referral: isReferral,
       deadline: form.deadline || null,
       career_path_id: form.career_path_id || null,
       work_mode: form.work_mode || null,
@@ -97,7 +99,18 @@ export default function JobEditor({ job, careerPaths, adminId, approveOnSave = f
         <Text id="deadline" label="Application deadline" optional type="date" value={form.deadline} onChange={set} />
         <Text id="salary_range" label="Salary range" optional value={form.salary_range} onChange={set} placeholder="e.g. ₦250k – ₦400k / month" />
         <Text id="application_link" label="Application or referral link" type="url" value={form.application_link} onChange={set}
-          error={formErrors.application_link} placeholder="https://" hint="Members tap Apply and go straight here." full />
+          error={formErrors.application_link} placeholder="https://" hint="Members tap Apply and go straight here. For Micro1, Turing and similar, paste your referral link." full />
+        <div className="field full">
+          <label className="check-row">
+            <input type="checkbox" checked={isReferral} onChange={(e) => setIsReferral(e.target.checked)} />
+            <span>
+              <strong>This is a referral link</strong>
+              <span className="hint" style={{ display: "block", marginTop: 2 }}>
+                Members will see &ldquo;Referral link via YPC&rdquo; under the Apply button.
+              </span>
+            </span>
+          </label>
+        </div>
         <div className="field full">
           <label className="label" htmlFor="j-description">Short description <span className="opt">(optional)</span></label>
           <textarea id="j-description" className="input" maxLength={5000} value={form.description} onChange={(e) => set("description", e.target.value)} />
