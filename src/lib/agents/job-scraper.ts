@@ -336,7 +336,8 @@ async function scrape(
   if (provider === "gemini" && !getGeminiKey()) return fail(JOB_SOURCE_MESSAGES.aiNotConfigured, details);
   const extracted =
     page.contentType === "text/plain" ? extractPlainText(page.body, page.finalUrl) : extractMainContent(page.body, page.finalUrl);
-  const aiText = extracted.text.slice(0, 12_000);
+  // The local model runs on a CPU, so send it less text (about half).
+  const aiText = extracted.text.slice(0, provider === "lmstudio" ? 6_000 : 12_000);
   details.text_chars = aiText.length;
   details.text_truncated = extracted.truncated || extracted.text.length > aiText.length;
   details.links = extracted.links.length;

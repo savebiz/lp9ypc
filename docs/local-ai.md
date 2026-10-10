@@ -9,10 +9,10 @@ Feeds and pages with structured job data don't need AI. The Vercel daily cron al
 
 ## One-time setup
 
-1. In LM Studio, download and load **Qwen3.8 27B** (`lmstudio-community/Qwen3.8-27B-GGUF`, Q4_K_M). It is the best of your models at structured extraction. Gemma 4 E4B is faster but less accurate.
+1. In LM Studio, load **Gemma 4 E4B** (`lmstudio-community/gemma-4-E4B-it-GGUF`) and **unload Qwen3.8 27B**. This laptop has no graphics card for AI, so the model runs on the processor: Gemma answers a short request in about 30 seconds, while Qwen 27B took over 10 minutes (tested 2026-10-10). Keep only one model loaded so it has the memory to itself.
 2. Open the **Developer** tab and click **Start Server**. The default address is `http://localhost:1234`.
 3. `.env.local` already has the Supabase keys the helper needs. You can also add:
-   - `LMSTUDIO_MODEL=` the model id exactly as LM Studio shows it. If this is blank, the helper picks the loaded Qwen3.8 27B model, or else the first loaded model.
+   - `LMSTUDIO_MODEL=` the model id exactly as LM Studio shows it. If this is blank, the helper picks Gemma 4 E4B, then Qwen3.8 27B, or else the first model listed.
    - `LMSTUDIO_BASE_URL=` leave blank for `http://localhost:1234/v1`. Only addresses on this PC (`localhost`, `127.0.0.1`, `[::1]`) are accepted, so data is never sent anywhere else.
 
 ## Running it
@@ -24,7 +24,7 @@ Feeds and pages with structured job data don't need AI. The Vercel daily cron al
   - `--research-only`: career suggestions only.
   - `--dry-run`: reads pages and asks the model, but saves nothing.
 
-If LM Studio isn't running, the helper says: "Start LM Studio, load Qwen3.8 27B and turn on the local server". A 27B model is slow, so a full run can take several minutes.
+If LM Studio isn't running, the helper says so. Expect a few minutes per career profession and 10-20 minutes per AI job page on this laptop; schedule it overnight and leave the PC plugged in.
 
 Each run adds a line to the agent log (`agent_runs`, trigger "local").
 

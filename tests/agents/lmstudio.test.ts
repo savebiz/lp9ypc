@@ -69,10 +69,10 @@ describe("LM Studio client", () => {
     assert.equal((parseChatCompletion("junk") as { reason: string }).reason, "bad_json");
   });
 
-  test("pickModel prefers LMSTUDIO_MODEL, then Qwen3.8 27B, then the first model", () => {
+  test("pickModel prefers LMSTUDIO_MODEL, then Gemma 4 E4B, then Qwen3.8 27B, then the first model", () => {
     assert.equal(pickModel("my-model", ["a"]), "my-model");
-    assert.equal(pickModel(null, ["gemma-4-e4b-it", "qwen3.8-27b"]), "qwen3.8-27b");
-    assert.equal(pickModel(null, ["gemma-4-e4b-it"]), "gemma-4-e4b-it");
+    assert.equal(pickModel(null, ["qwen3.8-27b", "gemma-4-e4b-it"]), "gemma-4-e4b-it");
+    assert.equal(pickModel(null, ["other", "qwen3.8-27b"]), "qwen3.8-27b");
     assert.equal(pickModel(null, []), null);
   });
 
@@ -92,13 +92,13 @@ describe("LM Studio client", () => {
     assert.equal(body.max_tokens, 300);
   });
 
-  test("without LMSTUDIO_MODEL it asks GET /v1/models and uses the Qwen model", async () => {
+  test("without LMSTUDIO_MODEL it asks GET /v1/models and uses the preferred model", async () => {
     const calls = stubFetch((url) =>
-      url.endsWith("/models") ? jsonResponse({ data: [{ id: "gemma-4-e4b-it" }, { id: "qwen3.8-27b-instruct" }] }) : chat("{}"),
+      url.endsWith("/models") ? jsonResponse({ data: [{ id: "qwen3.8-27b-instruct" }, { id: "google/gemma-4-e4b" }] }) : chat("{}"),
     );
     await lmstudioGenerateJson(J);
     assert.equal(calls.length, 2);
-    assert.equal(JSON.parse(String(calls[1].init.body)).model, "qwen3.8-27b-instruct");
+    assert.equal(JSON.parse(String(calls[1].init.body)).model, "google/gemma-4-e4b");
   });
 
   test("server down → http_error (not a crash); routed through generateJsonVia('lmstudio')", async () => {

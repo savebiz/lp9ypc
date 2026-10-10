@@ -155,7 +155,7 @@ async function loadProfessionGroups(admin: SupabaseClient): Promise<Map<string, 
 }
 
 /** Picks ≤ 5 professions: never researched first (most members first), then failed ones, then stale ones. */
-async function pickDue(admin: SupabaseClient, groups: Map<string, ProfessionGroup>, max: number): Promise<ProfessionGroup[] | null> {
+async function pickDue(admin: SupabaseClient, groups: Map<string, ProfessionGroup>, max: number, retryFailedNow = false): Promise<ProfessionGroup[] | null> {
   const keys = [...groups.keys()];
   const existing = new Map<string, ResearchRow>();
   for (const part of chunks(keys, CHUNK)) {
@@ -179,7 +179,7 @@ async function pickDue(admin: SupabaseClient, groups: Map<string, ProfessionGrou
   const retry = all
     .filter((g) => {
       const r = existing.get(g.key);
-      return r && r.status !== "done" && age(r) > RETRY_ERROR_AFTER_MS;
+      return r && r.status !== "done" && (retryFailedNow || age(r) > RETRY_ERROR_AFTER_MS);
     })
     .sort(bySize);
   const stale = all
@@ -452,7 +452,7 @@ async function saveResearch(
 /** Runs one research batch. `deadline` (epoch ms) keeps the cron inside maxDuration. Never throws. */
 export async function runCareerResearch(
   admin: SupabaseClient,
-  opts: { deadline: number; provider?: LlmProvider; dryRun?: boolean; maxProfessions?: number },
+  opts: { deadline: number; provider?: LlmProvider; dryRun?: boolean; maxProfessions?: number; retryFailedNow?: boolean },
 ): Promise<CareerResearchResult> {
   const base = { processed: 0, usage: emptyUsage(), webSearches: 0 };
   const provider = opts.provider ?? "gemini";
@@ -469,7 +469,7 @@ export async function runCareerResearch(
 
     const groups = await loadProfessionGroups(admin);
     if (!groups) return { ...base, status: "error", message: "Could not load member professions.", details: {} };
-    const due = await pickDue(admin, groups, Math.max(1, Math.min(20, opts.maxProfessions ?? MAX_PROFESSIONS_PER_RUN)));
+    const due = await pickDue(admin, groups, Math.max(1, Math.min(20, opts.maxProfessions ?? MAX_PROFESSIONS_PER_RUN)), opts.retryFailedNow === true);
     if (!due) return { ...base, status: "error", message: "Could not load existing research.", details: {} };
     if (due.length === 0) {
       return { ...base, status: "ok", message: "All professions are up to date.", details: { professions: [] } };

@@ -8,6 +8,7 @@
  *   npm run ai:local -- --jobs-only
  *   npm run ai:local -- --research-only
  *   npm run ai:local -- --dry-run     # read and think, but write nothing
+ *   npm run ai:local -- --retry-failed  # retry failed professions now, not after 24 hours
  *
  * Needs .env.local (NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY;
  * optional LMSTUDIO_BASE_URL, LMSTUDIO_MODEL). Values are never printed.
@@ -20,7 +21,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const LM_STUDIO_HELP = "Start LM Studio, load Qwen3.8 27B and turn on the local server (Developer tab → Start Server), then run this again.";
+const LM_STUDIO_HELP = "Start LM Studio, load Gemma 4 E4B (unload Qwen3.8 27B: it is too slow on this laptop) and turn on the local server (Developer tab → Start Server), then run this again.";
 
 /** Minimal .env parser (no dependency). Never prints values; never overrides variables already set. */
 function loadEnvFile(file: string): number {
@@ -47,12 +48,13 @@ function loadEnvFile(file: string): number {
 
 const args = new Set(process.argv.slice(2));
 if (args.has("--help") || args.has("-h")) {
-  console.log("Usage: npm run ai:local -- [--jobs-only] [--research-only] [--dry-run]");
+  console.log("Usage: npm run ai:local -- [--jobs-only] [--research-only] [--dry-run] [--retry-failed]");
   process.exit(0);
 }
 const jobsOnly = args.has("--jobs-only");
 const researchOnly = args.has("--research-only");
 const dryRun = args.has("--dry-run");
+const retryFailed = args.has("--retry-failed");
 if (jobsOnly && researchOnly) {
   console.error("Choose either --jobs-only or --research-only, not both.");
   process.exit(2);
@@ -70,9 +72,9 @@ const { addUsage, emptyUsage } = await import("../src/lib/agents/gemini-parse.ts
 
 const MAX_SOURCES = 10;
 const SOURCE_FRESH_MS = 20 * 60 * 60 * 1000; // skip sources that ran fine in the last 20 hours
-const PER_SOURCE_MS = 10 * 60 * 1000;
-const RESEARCH_BUDGET_MS = 60 * 60 * 1000;
-const MAX_PROFESSIONS = 10;
+const PER_SOURCE_MS = 30 * 60 * 1000;
+const RESEARCH_BUDGET_MS = 2 * 60 * 60 * 1000;
+const MAX_PROFESSIONS = 5;
 
 function line(text = ""): void {
   console.log(text);
@@ -174,7 +176,7 @@ async function main(): Promise<number> {
   if (!jobsOnly) {
     line("== Career research (offline knowledge, no web search) ==");
     const runId = dryRun ? null : await startAgentRun("career_research", { trigger: "local", provider: "lmstudio" }, admin);
-    const r = await runCareerResearch(admin, { deadline: Date.now() + RESEARCH_BUDGET_MS, provider: "lmstudio", dryRun, maxProfessions: MAX_PROFESSIONS });
+    const r = await runCareerResearch(admin, { deadline: Date.now() + RESEARCH_BUDGET_MS, provider: "lmstudio", dryRun, maxProfessions: MAX_PROFESSIONS, retryFailedNow: retryFailed });
     const outcomes = (r.details.professions ?? []) as { key: string; status: string; matches?: number; suggestions?: number; error?: string }[];
     for (const o of outcomes) {
       line(`- ${o.key}: ${o.status}${o.status === "done" ? ` (${o.matches ?? 0} matching paths, ${o.suggestions ?? 0} member suggestions)` : o.error ? ` (${o.error})` : ""}`);

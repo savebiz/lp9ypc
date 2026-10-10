@@ -22,9 +22,12 @@ import type { GeminiJsonResult, GenerateJsonOptions } from "./gemini.ts";
 
 export const DEFAULT_LMSTUDIO_BASE_URL = "http://localhost:1234/v1";
 /** Local 27B models are slow: allow plenty of time per call. */
-export const LMSTUDIO_TIMEOUT_MS = 180_000;
+// Victor's laptop runs models on the CPU (Iris Xe, no GPU): allow long calls.
+export const LMSTUDIO_TIMEOUT_MS = 15 * 60 * 1000;
 /** Preferred model when LMSTUDIO_MODEL is unset (matched against GET /v1/models ids). */
-const PREFERRED_MODEL = /qwen3\.8.*27b/i;
+// Gemma 4 E4B first: ~30 s per short answer on a CPU-only laptop, where
+// Qwen3.8 27B took over 10 minutes (tested 2026-10-10). Qwen is the fallback.
+const PREFERRED_MODELS = [/gemma-4-e4b/i, /qwen3\.8.*27b/i];
 const MODEL_ID_RE = /^[\w.:/@+-]{1,200}$/;
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -87,10 +90,14 @@ export async function listLmStudioModels(baseUrl: string, timeoutMs = 5_000): Pr
   }
 }
 
-/** LMSTUDIO_MODEL if set; else the Qwen3.8 27B id if listed; else the first listed model. Pure. */
+/** LMSTUDIO_MODEL if set; else Gemma 4 E4B, then Qwen3.8 27B, if listed; else the first listed model. Pure. */
 export function pickModel(configured: string | null, available: string[]): string | null {
   if (configured) return configured;
-  return available.find((id) => PREFERRED_MODEL.test(id)) ?? available[0] ?? null;
+  for (const re of PREFERRED_MODELS) {
+    const hit = available.find((id) => re.test(id));
+    if (hit) return hit;
+  }
+  return available[0] ?? null;
 }
 
 function mapUsage(u: unknown): GeminiUsage {
