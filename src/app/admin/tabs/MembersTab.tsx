@@ -138,6 +138,7 @@ export default function MembersTab({ members, careerPaths, pathsByMember, adminI
                     <td data-label="Joined">{formatDate(m.created_at)}</td>
                     <td data-label="Access">
                       {isAdmin ? (
+                        <>
                         <button type="button" className={`btn btn-ghost btn-sm ${styles.dangerGhost}`} onClick={() => changeRole(m, "member")}
                           disabled={!!busy || adminCount <= 1}
                           title={adminCount <= 1 ? "The club needs at least one admin" : undefined}
@@ -145,6 +146,8 @@ export default function MembersTab({ members, careerPaths, pathsByMember, adminI
                           {busy === m.id ? <Loader2 size={16} className="spin" aria-hidden="true" /> : <ShieldOff size={16} aria-hidden="true" />}
                           {adminCount <= 1 ? " Only admin" : " Remove admin"}
                         </button>
+                        {adminCount <= 1 && <span className="hint" style={{ display: "block", marginTop: 4 }}>The club needs at least one admin.</span>}
+                        </>
                       ) : (
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => changeRole(m, "admin")} disabled={!!busy}
                           aria-label={`Make ${name} an admin`}>

@@ -502,7 +502,8 @@ function PostCard({ kind, post, ctx, descendants, collapsed, onToggleCollapse }:
     items.push({ key: "quote", label: "Quote", icon: <Quote size={18} aria-hidden="true" />, onSelect: () => ctx.openComposer(post.id, quoteText(post.body)) });
   }
   const lockedForMe = !isLead && thread.isLocked && !viewer.canModerate;
-  if (own && post.status !== "removed" && !editing && !lockedForMe) {
+  const firstCheck = post.status === "pending" && !post.editedAt; // the server refuses edits until the first check is done
+  if (own && post.status !== "removed" && !editing && !lockedForMe && !firstCheck) {
     items.push({ key: "edit", label: "Edit", icon: <Pencil size={18} aria-hidden="true" />, onSelect: () => ctx.setEditing(post.id) });
   }
   if (own && post.status !== "removed") {
@@ -572,6 +573,21 @@ function PostCard({ kind, post, ctx, descendants, collapsed, onToggleCollapse }:
   const showReply = visible && ctx.canReply;
   const showShare = visible && threadVisible;
 
+  const meta = (
+    <p className={styles.postMeta} style={isLead ? undefined : { marginTop: 0 }}>
+      <span className={`${styles.metaItem} ${styles.author}`}>
+        {name}
+        {own ? " (you)" : ""}
+        <RoleBadge role={ctx.badges[post.authorId]} />
+      </span>
+      <span className={styles.metaItem}>
+        <TimeAgo date={post.createdAt} />
+      </span>
+      <EditedMark editedAt={post.editedAt} />
+      {isNew && <span className={styles.newLabel}>New</span>}
+    </p>
+  );
+
   return (
     <article
       ref={articleRef}
@@ -580,7 +596,8 @@ function PostCard({ kind, post, ctx, descendants, collapsed, onToggleCollapse }:
       className={[
         styles.post,
         isLead ? styles.postLead : "",
-        !visible ? styles.postHidden : "",
+        // Your own post waiting for its check keeps the normal card (the chip and note say enough).
+        !visible && !(own && post.status === "pending") ? styles.postHidden : "",
         ctx.highlight === post.id ? styles.highlight : "",
       ]
         .filter(Boolean)
@@ -588,31 +605,27 @@ function PostCard({ kind, post, ctx, descendants, collapsed, onToggleCollapse }:
       aria-labelledby={isLead ? "thread-title" : undefined}
       aria-label={isLead ? undefined : `Reply from ${name}`}
     >
-      {showBadges && (
-        <div className={styles.badges}>
-          {lead?.isPinned && <PinnedBadge />}
-          {lead?.isLocked && <LockedBadge />}
-          {chip}
+      {/* ⋯ sits top-right of the card, so Like · Reply · Share stay on one row at 320px. */}
+      <div className={styles.cardHead}>
+        <div className={styles.cardHeadMain}>
+          {showBadges && (
+            <div className={styles.badges}>
+              {lead?.isPinned && <PinnedBadge />}
+              {lead?.isLocked && <LockedBadge />}
+              {chip}
+            </div>
+          )}
+          {lead ? (
+            <h1 id="thread-title" className={editing ? "sr-only" : styles.postTitle}>
+              {lead.title}
+            </h1>
+          ) : (
+            meta
+          )}
         </div>
-      )}
-
-      {lead && (
-        <h1 id="thread-title" className={editing ? "sr-only" : styles.postTitle}>
-          {lead.title}
-        </h1>
-      )}
-
-      <p className={styles.postMeta} style={isLead ? undefined : { marginTop: 0 }}>
-        <span className={styles.author}>
-          {name}
-          {own ? " (you)" : ""}
-        </span>
-        <RoleBadge role={ctx.badges[post.authorId]} />
-        <span aria-hidden="true">·</span>
-        <TimeAgo date={post.createdAt} />
-        <EditedMark editedAt={post.editedAt} />
-        {isNew && <span className={styles.newLabel}>New</span>}
-      </p>
+        <PostMenu items={items} buttonRef={menuBtnRef} />
+      </div>
+      {lead && meta}
 
       {note}
 
@@ -667,7 +680,6 @@ function PostCard({ kind, post, ctx, descendants, collapsed, onToggleCollapse }:
               communityName={community.name}
             />
           )}
-          <PostMenu items={items} buttonRef={menuBtnRef} />
           {descendants > 0 && (
             <button type="button" className={`btn-link ${styles.textBtn}`} aria-expanded={!collapsed} onClick={onToggleCollapse}>
               {collapsed ? `Show replies (${descendants})` : `Hide replies (${descendants})`}

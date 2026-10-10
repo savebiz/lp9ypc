@@ -199,7 +199,7 @@ export default function CommunitiesTab({ communities, communityMembers, communit
                       <span className="status off">{c.kind === "career" ? "Career" : "Interest"}</span>
                     </div>
                     {c.description && <p className="small ink-2" style={{ marginTop: 2 }}>{c.description}</p>}
-                    <p className="small muted" style={{ marginTop: 2 }}>
+                    <p className="small muted" style={{ marginTop: 2, overflowWrap: "anywhere" }}>
                       {rows.length} member{rows.length === 1 ? "" : "s"} · {threadCount.get(c.id) ?? 0} discussion{(threadCount.get(c.id) ?? 0) === 1 ? "" : "s"} · /community/{c.slug}
                     </p>
                   </div>

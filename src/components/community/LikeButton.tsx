@@ -105,7 +105,7 @@ export default function LikeButton({ kind, id, count: initialCount, liked: initi
       aria-label={label}
       onClick={toggle}
     >
-      <Heart size={18} aria-hidden="true" fill={liked ? "var(--citrus)" : "none"} /> {count > 0 ? count : "Like"}
+      <Heart size={18} aria-hidden="true" fill={liked ? "var(--coral-ink)" : "none"} /> {count > 0 ? count : "Like"}
     </button>
   );
 }

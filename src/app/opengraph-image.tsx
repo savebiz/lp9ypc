@@ -23,20 +23,23 @@ export default async function OpengraphImage() {
           height: "100%",
           display: "flex",
           flexDirection: "column",
-          justifyContent: "space-between",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: 48,
+          // Centred so WhatsApp's square crop keeps the logos (design review #15).
           background: "#FFFDF7",
           padding: "64px 72px",
           borderBottom: "16px solid #FFD400",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 40 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 40 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={`data:image/png;base64,${crest}`} width={198} height={240} alt="" />
           <div style={{ width: 2, height: 160, background: "rgba(11,15,44,0.2)" }} />
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={`data:image/png;base64,${ypc}`} width={511} height={180} alt="" />
         </div>
-        <div style={{ display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
           <div style={{ fontSize: 64, fontWeight: 700, color: "#0B0F2C", letterSpacing: "-0.02em", lineHeight: 1.05 }}>
             LP9 Young Professionals Club
           </div>

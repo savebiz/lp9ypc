@@ -44,10 +44,17 @@ export default async function LandingPage() {
           <div className="wrap" style={{ position: "relative" }}>
             <HeroLogoArt />
             <div style={{ position: "relative", zIndex: 1, maxWidth: 720 }}>
-              <span className="eyebrow">{HERO.eyebrow}</span>
+              <span className="eyebrow">
+                {HERO.eyebrow.split(" · ").map((part, i) => (
+                  <span key={part}>
+                    {i > 0 && <span className="eyebrow-sep" aria-hidden="true"> · </span>}
+                    <span className="eyebrow-part">{part}</span>
+                  </span>
+                ))}
+              </span>
               <h1 style={{ marginTop: 16 }}>
                 Your career.<br />
-                Your <span style={{ whiteSpace: "nowrap" }}><span className="hl">community</span>.</span><br />
+                <span style={{ whiteSpace: "nowrap" }}>Your <span className="hl">community</span>.</span><br />
                 <span className="text-blue">Your move.</span>
               </h1>
               <p className="lede">{HERO.summary}</p>
@@ -64,7 +71,7 @@ export default async function LandingPage() {
                 <Link href="/jobs" className="btn btn-ghost btn-lg">View jobs</Link>
               </div>
               <p className="hero-meta small ink-2">
-                New here? <Link href="/about" className="btn-link" style={{ minHeight: 0 }}>Learn about YPC</Link>
+                New here? <Link href="/about" className="btn-link">Learn about YPC</Link>
               </p>
             </div>
           </div>

@@ -234,25 +234,28 @@ export default async function CommunityPage({
                             {t.title}
                           </Link>
                         </h3>
+                        {/* Two short lines so rows stay tidy at 320px; "·" is drawn by CSS (.metaItem). */}
                         <p className={styles.threadMeta}>
-                          <span>
+                          <span className={styles.metaItem}>
                             {nameOf(names, t.author_id)}
                             {own ? " (you)" : ""}
                             <RoleBadge role={badges[t.author_id]} />
                           </span>
-                          <span aria-hidden="true">·</span>
-                          <TimeAgo date={t.created_at} />
-                          <span aria-hidden="true">·</span>
-                          <span>
+                          <span className={styles.metaItem}>
+                            <TimeAgo date={t.created_at} />
+                          </span>
+                        </p>
+                        <p className={`${styles.threadMeta} ${styles.threadMeta2}`}>
+                          <span className={styles.metaItem}>
                             <MessageSquare size={14} aria-hidden="true" /> {plural(t.reply_count, "reply", "replies")}
                           </span>
                           {t.like_count > 0 && (
-                            <span>
+                            <span className={styles.metaItem}>
                               <Heart size={14} aria-hidden="true" /> {plural(t.like_count, "like")}
                             </span>
                           )}
                           {t.reply_count > 0 && t.last_activity_at !== t.created_at && (
-                            <span>
+                            <span className={styles.metaItem}>
                               last reply <TimeAgo date={t.last_activity_at} />
                             </span>
                           )}

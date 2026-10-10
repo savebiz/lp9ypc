@@ -41,14 +41,13 @@ export function RoleBadge({ role }: { role: "admin" | "manager" | undefined | nu
   );
 }
 
-/** "· edited" with the full edit time as a tooltip. Shown to everyone. */
+/** "edited" (its "·" is drawn by CSS .metaItem) with the full edit time as a tooltip. Shown to everyone. */
 export function EditedMark({ editedAt }: { editedAt: string | null | undefined }) {
   if (!editedAt) return null;
   return (
-    <>
-      <span aria-hidden="true">·</span>
-      <span className={styles.edited} title={`Edited ${fullDateTime(editedAt)}`}>edited</span>
-    </>
+    <span className={`${styles.metaItem} ${styles.edited}`} title={`Edited ${fullDateTime(editedAt)}`}>
+      edited
+    </span>
   );
 }
 

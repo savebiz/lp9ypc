@@ -222,13 +222,15 @@ a.backLink { color: var(--ink-2); text-decoration: none; margin-top: 16px; }
 }
 
 /* Action bar: Like · Reply · Share · ⋯ (each ≥ 44×44) */
+/* ⋯ lives in .cardHead, so Like + Reply + Share (~216px) fit one row even on a depth-2 reply at 320px. */
 .actions {
-  margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
-  margin-left: -10px;
+  margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 0;
+  margin-left: -8px;
 }
+.actions > .textBtn { flex-basis: 100%; display: inline-flex; align-items: center; justify-content: flex-start; }
 .actionBtn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  min-height: 44px; min-width: 44px; padding: 0 10px; border: 0; border-radius: var(--r-pill);
+  min-height: 44px; min-width: 44px; padding: 0 8px; border: 0; border-radius: var(--r-pill);
   background: transparent; color: var(--ink-2); font: inherit; font-size: 15px; font-weight: 600;
   cursor: pointer; font-variant-numeric: tabular-nums;
 }
@@ -236,8 +238,9 @@ a.backLink { color: var(--ink-2); text-decoration: none; margin-top: 16px; }
 .actionBtn[aria-expanded="true"] { background: var(--cream); color: var(--ink); }
 .actionBtn[aria-disabled="true"] { color: var(--muted); cursor: default; }
 .actionBtn[aria-disabled="true"]:hover { background: transparent; }
+/* Liked: filled coral-red heart (#C0392B, 5.4:1 on white), count in ink. */
 .liked { color: var(--ink); }
-.liked :global(svg) { stroke: var(--ink); }
+.liked :global(svg) { stroke: var(--coral-ink); }
 .likeStatic {
   display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px;
   color: var(--ink-2); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums;
@@ -267,11 +270,27 @@ a.backLink { color: var(--ink-2); text-decoration: none; margin-top: 16px; }
 /* Nested replies: depth 1 indents 12px, depth 2 24px, each with a 2px rail */
 .children {
   list-style: none; margin: 8px 0 0; padding: 0 0 0 12px; display: grid; gap: 8px;
-  border-left: 2px solid var(--line);
+  border-left: 2px solid var(--line-strong); /* 3.7:1 on paper — the nesting reads clearly */
 }
 .children .post { padding: 14px; }
 .postStub { background: var(--paper); border-style: dashed; }
 .postStub .postMeta { color: var(--muted); }
+@media (max-width: 359px) {
+  .children { padding-left: 8px; }
+  .children .post { padding: 12px; }
+}
+
+/* Card head: badges/title (thread) or meta line (reply) on the left, ⋯ top-right */
+.cardHead { display: flex; align-items: flex-start; gap: 4px; }
+.cardHeadMain { flex: 1; min-width: 0; }
+.cardHead > .menuWrap { flex-shrink: 0; margin: -10px -10px 0 0; }
+.cardHead .postMeta { min-height: 24px; }
+
+/* Meta separators: the "·" travels with the item after it, never wraps alone, isn't read aloud */
+.metaItem { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.metaItem + .metaItem::before { content: "·"; margin-right: 5px; color: var(--muted); }
+.author.metaItem { white-space: normal; flex-wrap: wrap; }
+.threadMeta2 { margin-top: 2px; }
 .stubBody { margin-top: 6px; color: var(--ink-2); font-style: italic; }
 
 /* Brief highlight when opened from a #reply- link */
