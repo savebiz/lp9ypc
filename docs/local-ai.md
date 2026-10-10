@@ -18,7 +18,12 @@ Feeds and pages with structured job data don't need AI. The Vercel daily cron al
 ## Running it
 
 - Double-click `scripts\run-local-ai.cmd`. The window stays open so you can read the summary.
-- Or, in a terminal in the project folder, run `npm run ai:local`.
+- Or, in a terminal, first go to the website folder (not the planning folder):
+  `cd "C:\Users\hp\OneDrive - Dataguard Document Management Limited\Desktop\GIGS\LP9-YPC"`
+  then run `npm.cmd run ai:local`. In Windows PowerShell type `npm.cmd`, not `npm`: plain `npm` is blocked
+  there ("running scripts is disabled on this system"), and `npm.cmd` avoids that without changing any Windows setting.
+- Useful options: `--dry-run` (save nothing), `--research-only`, `--jobs-only`, `--retry-failed`
+  (retry professions that failed instead of waiting 24 hours).
 - Options:
   - `--jobs-only`: job sources only.
   - `--research-only`: career suggestions only.
