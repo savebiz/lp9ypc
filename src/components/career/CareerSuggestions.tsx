@@ -89,12 +89,21 @@ export default function CareerSuggestions({ userId, suggestions, fallback = [], 
   }
 
   const title = variant === "switch" ? "Paths to explore" : "Suggested career paths";
+  // Suggestions made by the local (LM Studio) helper carry a marker source:
+  // they come from the model's own knowledge, not a live web search.
+  const isOffline = (it: (typeof items)[number]) =>
+    (it.suggestion?.sources ?? []).some((s) => s.title === "lp9:offline-knowledge");
+  const anyOffline = items.some(isOffline);
   const intro =
     variant === "switch"
-      ? "Suggested by our career assistant, which looks up your profession online. Check the sources before you decide."
+      ? anyOffline
+        ? "Suggested by our career assistant. Check each suggestion before you decide."
+        : "Suggested by our career assistant, which looks up your profession online. Check the sources before you decide."
       : usingFallback
         ? "Based on your profession."
-        : "Suggested by our career assistant, which looks up your profession online.";
+        : anyOffline
+          ? "Suggested by our career assistant."
+          : "Suggested by our career assistant, which looks up your profession online.";
 
   return (
     <section className="panel" aria-labelledby={headingId}>
@@ -130,6 +139,9 @@ export default function CareerSuggestions({ userId, suggestions, fallback = [], 
                 <div className={styles.body}>
                   <h3 className={styles.name}>{item.path.name}</h3>
                   {item.suggestion?.reason && <p className={styles.reason}>{item.suggestion.reason}</p>}
+                  {isOffline(item) && (
+                    <p className={styles.sources}>Suggested by our career assistant (offline knowledge, not live web search)</p>
+                  )}
                   {sources.length > 0 && (
                     <p className={styles.sources}>
                       Sources:{" "}
