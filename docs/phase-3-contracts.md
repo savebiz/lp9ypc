@@ -97,3 +97,50 @@ Migration `supabase/migrations/20261011120000_replyto_audit_flyers.sql` (tech le
 - **`admin_audit (id, actor_id, action, target_type, target_id, details jsonb, created_at)`**: admins can read; ONLY server routes write it, with the service role. Helper (fullstack-admin-engineer) `src/app/api/_lib/audit.ts`: `export async function writeAudit(admin, { actorId, action, targetType?, targetId?, details? }): Promise<void>` that never throws (logs a code on failure). Actions to record now: `member.role_change` (details `{from, to}`), `job_source.run` (manual Run now). Never put member contact details in `details`.
 - **Event flyers**: `announcements.image_url` (must start `https://`; the public URL from the `event-flyers` bucket) and `image_alt` (≤300 chars, required in the UI when a flyer is attached). Bucket `event-flyers`: public read, admins-only write (RLS on storage.objects), 5 MB, jpeg/png/webp. Upload path: `flyers/{yyyy}/{uuid}.{ext}`.
 - **Local AI helper** (ai-agents-engineer): see the brief in your task message.
+
+
+---
+
+# Phase 3.2 addendum (2026-10-12): member feedback + assistant link checks
+
+Victor's decisions: **members only** (no visitors), **no public ideas board yet**, **daily link/date checker: yes, flag only** (never hides or edits anything). Migration `supabase/migrations/20261012120000_feedback.sql` (tech lead; Victor applies it — it may not be live when you test: code to the contract and handle a missing table with a friendly error).
+
+## Database
+- `feedback`: `source` member|assistant · `kind` link|wrong_info|broken|idea · `message` ≤400 (idea needs ≥3) · `page_path` same-site path only (starts `/`, not `//`, no spaces, ≤300) · `target_type` job|announcement|career_path|community + `target_id` · `submitter_id` (null for assistant) · `status` new|looking|fixed|not_now · `admin_note` ≤1000 (INTERNAL) · `public_reason` ≤200 (shown to the sender) · `handled_by/handled_at` · timestamps.
+  - RLS: admins read. NO browser inserts or updates. Member submits go through `submit_feedback()` (server, service role); admin updates through the admin route (service role + `writeAudit`); the assistant inserts with the service role.
+  - Unique partial index: one OPEN assistant item per (target_type, target_id, kind).
+- `my_feedback` view: a member's own rows (no admin_note). The dashboard reads it with the session client.
+- `submit_feedback(p_submitter, p_kind, p_message, p_page_path, p_target_type, p_target_id, p_limit=5, p_window='10 minutes') → uuid`: NULL = rate-limited (429); returns the existing id if the same member already has an open report of that kind on that item within 24 h. Callable only by service_role.
+- `link_health (job_id pk, fail_count, last_status, last_http, checked_at)`: admins read; the checker writes with the service role.
+- `agent_runs.agent` now also accepts `'link_check'`.
+- Types `Feedback`, `MyFeedback`, `FeedbackKind/Status/TargetType`, `LinkHealth` are in `src/types/index.ts`.
+
+## Wording (use exactly)
+- Kind labels: link → "This link doesn't work" · wrong_info → "Something here is wrong" · broken → "Something's broken" · idea → "I have an idea".
+- Status labels: new → "Received" (admin list: "New") · looking → "Looking into it" · fixed → "Fixed" · not_now → "Not now".
+- Footer link: "Spotted a problem or have an idea? Tell us." Job: "Link not working?" Event: "Wrong details?"
+- Form hint: "Wrong details, a link that doesn't work, or an idea to make this better. To report a person or a post, use Report instead."
+- Thank-you: "Thank you, that really helps. Someone from the YPC team will read it within 3 days. You can see its progress on your dashboard."
+- Assistant messages: link — "The Apply link didn't open on 2 checks in a row ({reason})."; wrong_info — "This event's date has passed but it's still showing." / "The closing date has passed but the job is still showing."
+
+## Member side (builder A)
+Files: `src/app/api/feedback/**`, `src/app/feedback/**`, `src/components/feedback/**`, `src/components/jobs/JobCard.tsx` and `src/app/jobs/[id]/page.tsx` (add the link only), `src/components/news/EventCard.tsx`, `src/components/layout/Footer.tsx`, `src/app/dashboard/page.tsx` (plus a new FeedbackPanel component), `src/app/privacy/page.tsx`.
+- `POST /api/feedback` `{kind, message?, pagePath?, targetType?, targetId?, website?}` (`website` is a honeypot: if filled, return 201 and store nothing). Order: `checkOrigin` → `requireUser` → `requireServiceRole` → `parseBody` → validate (kind enum; message ≤400; `pagePath` must be a same-site path: `new URL(x, "https://x.invalid")`, origin must match, keep pathname+search ≤300, reject `//`; the target must exist: look it up with the session client) → if `checkLocalRules(message)` hits, return 201 and store nothing (don't tip off spammers) → `rpc("submit_feedback")` with the admin client → `201 {ok:true, id}`; NULL → 429 "You've sent a few already. Please wait a few minutes and try again." No AI call.
+- `/feedback` page: signed out → sign-in prompt plus "or email {SITE.contactEmail}". Signed in → form: required kind (large option rows), optional note (counter, 400), "About: {item title}" when `?job=<id>`, `?event=<id>` or `?path=<id>` is present (title looked up server-side), `?kind=` preselects, hidden honeypot. After submit: inline thank-you and a back link. Mobile-first, 44px targets, no CAPTCHA.
+- Entry points: JobCard and job detail: small muted text link under Apply, "Link not working?" → `/feedback?job=<id>&kind=link` (must not compete with the citrus Apply button). EventCard: "Wrong details?" → `/feedback?event=<id>&kind=wrong_info`. Footer: "Spotted a problem or have an idea? Tell us." → `/feedback`.
+- Dashboard: "Your feedback" panel from `my_feedback` (latest 5: kind label, short note, status label, `public_reason` when Not now). Hide the panel when empty or when the view is missing.
+- Privacy page: add feedback to What we collect (category, note, the page it was about, your account), Who can see it (club admins only; never shown publicly), How long we keep it (12 months after it's resolved; removed with your account). Update LAST_UPDATED. No AI sees feedback.
+
+## Admin side (builder B)
+Files: `src/app/admin/**`, `src/app/api/admin/feedback/**`.
+- `PATCH /api/admin/feedback/[id]` `{status?, adminNote?, publicReason?}`: `requireAdmin` + service role; validate lengths; set `handled_by/handled_at` when status leaves new; `writeAudit` (action "feedback.update", target "feedback", details {status}).
+- "Feedback" tab (after Moderation): newest first; filters (status, kind, found by the assistant); each row: kind label and source badge ("Found by the assistant"), the note as plain text (never HTML or linkified), sender's first name, page as an internal `<Link href={page_path}>`, "Fix it now" (job → Jobs editor for that job; announcement → News & events editor), status buttons (Looking into it / Fixed / Not now + one-line reason shown to the sender), internal note box, "{n} reports" when several members reported the same item.
+- Overview "Needs your attention": new feedback count; jobs with ≥2 open "link" reports first. Load `feedback` and `link_health` in `page.tsx`; if the tables are missing, hide these parts.
+- Assistants tab run log: label `link_check` as "Link checker".
+
+## Link checker (builder C)
+Files: `src/lib/agents/link-check.ts`, `src/app/api/cron/link-check/route.ts`, `tests/agents/link-check.test.ts` (`vercel.json` already schedules 05:00 UTC).
+- `GET /api/cron/link-check`: `checkCron`, `maxDuration = 60`, one `agent_runs` row (agent `link_check`, trigger cron).
+- Active, approved jobs not checked in the last 20 h (oldest first, ≤40 per run, ≤4 at once, 8 s each): fetch the Apply link with the SSRF-safe fetch (HEAD, falling back to GET; ≤3 redirects; bot user agent; robots.txt not required for a single link check). Classify: ok (2xx/3xx ending on a real page); not_found (404/410); redirect_home (ends on the site root when the original link had a path); timeout / blocked / error (5xx, 403/429, network) — record `last_status` but do NOT count these as failures (flaky sites). Increment `fail_count` only on not_found/redirect_home; reset to 0 on ok.
+- When `fail_count` reaches 2, insert a `feedback` row (source assistant, kind link, target job, page_path `/jobs/{id}`, message as worded above) unless an open one exists (ignore the unique-index conflict). Each run also files one open wrong_info item for: active jobs whose `deadline` (Lagos date) has passed; active events whose `coalesce(ends_at, starts_at)` is more than 24 h ago. Never modify jobs or announcements.
+- Tests (pure functions, injected fetch and clock): classification, 403/5xx don't count, the two-strike rule, no duplicate items, deadline and event rules.

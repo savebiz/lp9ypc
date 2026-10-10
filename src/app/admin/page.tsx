@@ -5,8 +5,8 @@ import type { AdminData } from "./tabs/shared";
 import { getSession } from "@/lib/session";
 import { withModerationNotes } from "@/lib/moderation-notes";
 import type {
-  AdminAuditEntry, AgentRun, Announcement, CareerPath, CareerPathCandidate, Community, CommunityOverview, Job, JobSource,
-  Profile, Reply, Report, Thread,
+  AdminAuditEntry, AgentRun, Announcement, CareerPath, CareerPathCandidate, Community, CommunityOverview, Feedback, Job, JobSource,
+  LinkHealth, Profile, Reply, Report, Thread,
 } from "@/types";
 
 export const metadata = { title: "Admin · LP9 YPC" };
@@ -17,6 +17,13 @@ const THREAD_COLS = "id, community_id, author_id, title, body, status, needs_rev
 const REPLY_COLS = "id, thread_id, community_id, author_id, body, status, needs_review, created_at, updated_at, parent_id, depth, like_count, edited_at, reply_to_id";
 // The review queue: held posts, plus posts published while the automatic check was down.
 const NEEDS_REVIEW = "status.eq.held,and(status.eq.visible,needs_review.eq.true)";
+const FEEDBACK_COLS = "id, source, kind, message, page_path, target_type, target_id, submitter_id, status, admin_note, public_reason, handled_by, handled_at, created_at, updated_at";
+
+/** The Phase 3.2 tables may not be live yet (migration 20261012120000_feedback.sql). */
+function isMissingTable(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return error.code === "42P01" || error.code === "PGRST205" || /does not exist|schema cache/i.test(error.message ?? "");
+}
 
 
 export default async function AdminPage() {
@@ -52,6 +59,13 @@ export default async function AdminPage() {
       .order("created_at", { ascending: false }).limit(50),
   ]);
 
+  // Phase 3.2: member feedback and Apply-link checks. If the tables aren't
+  // there yet, those parts of the dashboard are simply hidden.
+  const [feedbackRes, linkHealthRes] = await Promise.all([
+    supabase.from("feedback").select(FEEDBACK_COLS).order("created_at", { ascending: false }).limit(300),
+    supabase.from("link_health").select("job_id, fail_count, last_status, last_http, checked_at"),
+  ]);
+
   const [heldThreads, heldReplies] = await Promise.all([
     withModerationNotes(supabase, "thread", (heldThreadsRes.data ?? []) as Thread[]),
     withModerationNotes(supabase, "reply", (heldRepliesRes.data ?? []) as Reply[]),
@@ -85,6 +99,9 @@ export default async function AdminPage() {
     ["career path ideas", candidatesRes], ["assistant runs", runsRes], ["reported discussions", relThreadsRes],
     ["reported replies", relRepliesRes], ["related discussions", extraThreadsRes], ["activity log", auditRes],
   ];
+  // A missing Phase 3.2 table just hides its section; any other failure is reported like the rest.
+  if (feedbackRes.error && !isMissingTable(feedbackRes.error)) sections.push(["feedback", feedbackRes]);
+  if (linkHealthRes.error && !isMissingTable(linkHealthRes.error)) sections.push(["link checks", linkHealthRes]);
   const failed = sections.filter(([, r]) => r.error);
   for (const [name, r] of failed) console.error(`[admin] ${name} failed to load (${r.error?.code ?? "unknown"})`);
   const loadError = sections.slice(0, 5).some(([, r]) => r.error);
@@ -110,6 +127,8 @@ export default async function AdminPage() {
     candidates: (candidatesRes.data ?? []) as CareerPathCandidate[],
     agentRuns: (runsRes.data ?? []) as AgentRun[],
     audit: (auditRes.data ?? []) as AdminAuditEntry[],
+    feedback: feedbackRes.error ? null : ((feedbackRes.data ?? []) as Feedback[]),
+    linkHealth: linkHealthRes.error ? null : ((linkHealthRes.data ?? []) as LinkHealth[]),
   };
 
   return (

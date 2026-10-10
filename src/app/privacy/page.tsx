@@ -10,7 +10,7 @@ export const metadata = { title: "Privacy policy · LP9 YPC" };
 
 // Keep every statement here true to the code. If a feature, provider or data
 // flow changes, update this page and LAST_UPDATED in the same change.
-const LAST_UPDATED = { iso: "2026-10-09", label: "9 October 2026" };
+const LAST_UPDATED = { iso: "2026-10-12", label: "12 October 2026" };
 
 const SECTIONS = [
   { id: "who-we-are", title: "Who we are" },
@@ -125,6 +125,10 @@ export default async function PrivacyPage() {
             <li>Communities you join</li>
             <li>Posts and replies you write, and reports you make about other posts</li>
             <li>Moderation records about your posts, for example if a post was held for review, and why</li>
+            <li>
+              Feedback you send us: the category you chose (for example &ldquo;This link doesn&apos;t work&rdquo;),
+              your note, the page or item it was about, and your account, so we can show you its progress
+            </li>
           </ul>
 
           <h3>Cookies and technical logs</h3>
@@ -197,6 +201,10 @@ export default async function PrivacyPage() {
             it came from you. The member you reported can&apos;t see who reported them.
           </p>
           <p>
+            When you send feedback, only YPC admins can see it, including that it came from you. It&apos;s never
+            shown publicly. You can follow its progress on your dashboard.
+          </p>
+          <p>
             We also use a few service providers to run the platform (see{" "}
             <a href="#providers">service providers</a>), and we&apos;ll share data with authorities only if the law
             requires it.
@@ -238,6 +246,9 @@ export default async function PrivacyPage() {
             Reads public job pages that YPC coordinators choose, and drafts job listings from them. It doesn&apos;t
             receive any member data. A coordinator checks every listing before it appears.
           </p>
+
+          <h3>What the assistants don&apos;t see</h3>
+          <p>Feedback you send us is never given to an AI assistant. Only YPC admins read it.</p>
 
           <h3>People make the final decisions</h3>
           <ul>
@@ -294,6 +305,10 @@ export default async function PrivacyPage() {
               Short moderation records (the action taken and the reason) may be kept after a post is gone, so
               managers can see a community&apos;s history. Once your account is deleted, they&apos;re no longer
               linked to you.
+            </li>
+            <li>
+              We keep feedback you send us while it&apos;s useful for improving the platform, and admins review and
+              clear out old, resolved feedback at least once a year. It&apos;s deleted with your account.
             </li>
             <li>
               Copies in our providers&apos; backups and logs are cleared on their normal schedules. How Google

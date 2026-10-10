@@ -1,0 +1,23 @@
+/* "Your feedback" dashboard panel (FeedbackPanel.tsx). */
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.item {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-input);
+  background: var(--white);
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.kind { font-weight: 600; color: var(--ink); }
+.note { color: var(--ink-2); overflow-wrap: anywhere; white-space: pre-line; }
+.reason {
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--cream);
+  border-radius: 8px;
+  padding: 8px 10px;
+  overflow-wrap: anywhere;
+}
+.reasonLabel { font-weight: 600; }

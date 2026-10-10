@@ -1,0 +1,63 @@
+/* Feedback form (src/components/feedback/FeedbackForm.tsx). Tokens only. */
+
+.about {
+  padding: 12px 14px;
+  border-radius: var(--r-input);
+  background: var(--cream);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.aboutLabel { font-weight: 600; color: var(--ink-2); }
+.aboutTitle { font-weight: 600; }
+
+.fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.fieldset legend { margin-bottom: 8px; }
+
+.options { margin-top: 0; }
+
+/* Native radio inside the shared .option row: visually hidden, still focusable. */
+.option { position: relative; }
+.radio {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+.option:has(.radio:focus-visible) {
+  outline: 3px solid var(--blue);
+  outline-offset: 2px;
+}
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--blue);
+}
+
+.labelRow {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.counter {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.counterNear { color: var(--coral-ink); font-weight: 600; }
+
+/* Honeypot: off-screen, not display:none (some bots skip hidden fields). */
+.trap {
+  position: absolute;
+  left: -10000px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}

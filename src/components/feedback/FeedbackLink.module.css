@@ -1,0 +1,14 @@
+/* Quiet "Link not working?" / "Wrong details?" link (FeedbackLink.tsx). */
+.link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  align-self: flex-start;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.link:hover { color: var(--ink); }

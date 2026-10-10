@@ -12,6 +12,7 @@ const AGENT_LABELS: Record<AgentRun["agent"], { name: string; schedule: string }
   job_scraper: { name: "Job finder", schedule: "Daily at 7:00am Lagos time" },
   career_research: { name: "Career research", schedule: "Daily at 4:00am Lagos time" },
   moderation_sweep: { name: "Moderation sweep", schedule: "Daily at 5:00am Lagos time" },
+  link_check: { name: "Link checker", schedule: "Daily at 6:00am Lagos time" },
 };
 
 const RUN_STATUS: Record<AgentRun["status"], { text: string; cls: string }> = {

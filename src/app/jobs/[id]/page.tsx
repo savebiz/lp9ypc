@@ -4,6 +4,8 @@ import { ArrowLeft } from "lucide-react";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import ApplyButton from "@/components/jobs/ApplyButton";
+import FeedbackLink from "@/components/feedback/FeedbackLink";
+import { FEEDBACK_COPY } from "@/components/feedback/feedback";
 import { PathIcon } from "@/components/ui/icons";
 import { getSession } from "@/lib/session";
 import {
@@ -75,6 +77,14 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 : "Ready? This takes you straight to the official application page."}
             </p>
             <ApplyButton link={job.application_link} deadline={job.deadline} title={job.title} size="lg" referral={!!job.is_referral} />
+            {!expired && (
+              <FeedbackLink
+                href={`/feedback?job=${job.id}&kind=link`}
+                label={`${FEEDBACK_COPY.jobLink} Tell us about the Apply link for ${job.title}`}
+              >
+                {FEEDBACK_COPY.jobLink}
+              </FeedbackLink>
+            )}
           </div>
 
           <dl className="facts">
