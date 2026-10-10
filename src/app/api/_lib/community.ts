@@ -1,18 +1,32 @@
 /**
- * Shared steps for the two posting routes (threads and replies): rate limit,
- * moderation → columns, moderation_log, and the message shown to the author.
+ * Shared steps for the posting routes (threads, replies, post edits):
+ * rate limit + create as 'pending', the synchronous local-rule hold, and the
+ * thread page's stale safety net (docs/phase-3-contracts.md, instant posting).
+ *
+ * The AI check itself runs after the response, in
+ * src/lib/agents/post-moderation-job.ts (owned by the ai-agents-engineer).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ModerationResult } from "@/lib/agents/moderation";
-import type { PostStatus } from "@/types";
+import { checkLocalRules } from "@/lib/agents/moderation-rules";
+import {
+  logPostModeration,
+  moderationColumns,
+  schedulePostModeration,
+  type PostModerationJob,
+} from "@/lib/agents/post-moderation-job";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const POST_LIMIT = 10;
 export const POST_WINDOW_MS = 10 * 60 * 1000;
+/** One edit per post per 30 seconds. */
+export const EDIT_COOLDOWN_MS = 30 * 1000;
 
 export const POST_MESSAGES = {
-  posted: "Posted.",
+  pending: "Posted. We're doing a quick check before others can see it.",
+  editPending: "Saved. We're doing a quick check before others can see it.",
   held: "Held for review — a community manager will check it soon.",
   rateLimited: "You've posted a lot in the last few minutes. Please wait a little and try again.",
+  editTooSoon: "You've just edited this. Please wait a few seconds and try again.",
   saveFailed: "We couldn't save your post just now. Please try again.",
 } as const;
 
@@ -42,49 +56,97 @@ export async function claimPostSlot(
   return typeof data === "string" && data ? data : "limited";
 }
 
-/** Security-relevant columns come from moderation, never from the request body. */
-export function moderationColumns(result: ModerationResult): {
-  status: Extract<PostStatus, "visible" | "held">;
-  needs_review: boolean;
-  moderation_reason: string | null;
-  moderation_categories: string[];
-  moderated_by: "agent" | null;
-} {
-  if (result.source === "unavailable") {
-    // Fail open, with review: publish and let the sweep or a human re-check it.
-    return { status: "visible", needs_review: true, moderation_reason: null, moderation_categories: [], moderated_by: null };
+/**
+ * Runs the local rules (no network). On a hit, holds the still-pending post
+ * straight away and logs it, so it never waits for the AI check.
+ * Returns true when the post was held.
+ */
+export async function holdIfLocalRulesHit(admin: SupabaseClient, job: PostModerationJob): Promise<boolean> {
+  const local = checkLocalRules([job.kind === "thread" ? job.title ?? "" : "", job.body].join("\n"));
+  if (!local.hit) return false;
+  const result = { decision: "hold" as const, categories: local.categories, reason: local.reason, source: "agent" as const };
+  const table = job.kind === "thread" ? "threads" : "replies";
+  const { data, error } = await admin
+    .from(table)
+    .update(moderationColumns(result))
+    .eq("id", job.id)
+    .eq("status", "pending")
+    .select("id");
+  if (error) {
+    // Still pending (invisible to others): the stale safety net and the daily sweep pick it up.
+    console.error(`[api/community] local-rule hold failed (${error.code ?? "unknown"})`);
+    return true;
   }
-  if (result.decision === "hold") {
-    return {
-      status: "held",
-      needs_review: false,
-      moderation_reason: result.reason.slice(0, 500) || null,
-      moderation_categories: result.categories,
-      moderated_by: "agent",
-    };
+  if (Array.isArray(data) && data.length > 0) {
+    await logPostModeration(admin, { communityId: job.communityId, targetType: job.kind, targetId: job.id, result });
   }
-  return { status: "visible", needs_review: false, moderation_reason: null, moderation_categories: [], moderated_by: "agent" };
+  return true;
 }
 
-/** moderation_log row for the automatic decision: allow / hold by the agent, or flag when it was unavailable. */
-export async function logPostModeration(
-  admin: SupabaseClient,
-  entry: { communityId: string; targetType: "thread" | "reply"; targetId: string; result: ModerationResult },
-): Promise<void> {
-  const { result } = entry;
-  const unavailable = result.source === "unavailable";
-  const { error } = await admin.from("moderation_log").insert({
-    community_id: entry.communityId,
-    target_type: entry.targetType,
-    target_id: entry.targetId,
-    actor_type: unavailable ? "system" : "agent",
-    actor_id: null,
-    action: unavailable ? "flag" : result.decision,
-    reason: (unavailable ? `Published without an automatic check: ${result.reason}` : result.reason).slice(0, 500) || null,
-  });
-  if (error) console.error(`[api/community] moderation_log insert failed (${error.code ?? "unknown"})`);
+/** Local rules first; otherwise the AI check runs after the response. Returns the status to report. */
+export async function moderateInBackground(admin: SupabaseClient, job: PostModerationJob): Promise<"pending" | "held"> {
+  if (await holdIfLocalRulesHit(admin, job)) return "held";
+  schedulePostModeration(admin, job);
+  return "pending";
 }
 
-export function postMessage(status: "visible" | "held"): string {
-  return status === "held" ? POST_MESSAGES.held : POST_MESSAGES.posted;
+// ── Stale safety net (thread page) ──────────────────────────────────────────
+
+const STALE_AFTER_MS = 2 * 60 * 1000;
+const STALE_MAX = 3;
+/** Ids scheduled recently by this server instance, so page views don't pile up AI calls. */
+const recentlyScheduled = new Map<string, number>();
+const RESCHEDULE_AFTER_MS = 3 * 60 * 1000;
+
+/**
+ * For at most 3 posts in this thread that are still 'pending' more than
+ * 2 minutes after they were last saved, schedule the moderation check again
+ * (the original after() may have been cut short). Called by the thread page
+ * only after it has confirmed the signed-in viewer can see the thread.
+ * Nothing is returned to the page: the service-role results never leave here.
+ * Never throws.
+ */
+export async function scheduleStalePostChecks(thread: {
+  id: string;
+  communityId: string;
+  communityName: string;
+}): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    if (!admin) return;
+    const cutoff = new Date(Date.now() - STALE_AFTER_MS).toISOString();
+    const [threadRes, repliesRes] = await Promise.all([
+      admin
+        .from("threads")
+        .select("id, title, body")
+        .eq("id", thread.id)
+        .eq("status", "pending")
+        .lt("updated_at", cutoff)
+        .maybeSingle(),
+      admin
+        .from("replies")
+        .select("id, body")
+        .eq("thread_id", thread.id)
+        .eq("status", "pending")
+        .lt("updated_at", cutoff)
+        .order("created_at", { ascending: true })
+        .limit(STALE_MAX),
+    ]);
+
+    const jobs: PostModerationJob[] = [];
+    const t = threadRes.data as { id: string; title: string; body: string } | null;
+    if (t) jobs.push({ kind: "thread", id: t.id, communityId: thread.communityId, communityName: thread.communityName, title: t.title, body: t.body });
+    for (const r of (repliesRes.data ?? []) as { id: string; body: string }[]) {
+      jobs.push({ kind: "reply", id: r.id, communityId: thread.communityId, communityName: thread.communityName, body: r.body });
+    }
+
+    const now = Date.now();
+    for (const [id, at] of recentlyScheduled) if (now - at > RESCHEDULE_AFTER_MS) recentlyScheduled.delete(id);
+    for (const job of jobs.filter((j) => !recentlyScheduled.has(j.id)).slice(0, STALE_MAX)) {
+      recentlyScheduled.set(job.id, now);
+      schedulePostModeration(admin, job);
+    }
+  } catch {
+    console.error("[community] stale safety net failed (exception)");
+  }
 }

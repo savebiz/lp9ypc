@@ -17,7 +17,14 @@ const LIMITS = {
 const HELD_DEFAULT = "Held for review — a community manager will check it soon.";
 
 type Props =
-  | { kind: "thread"; communityId: string; /** Show a "Start a discussion" button first. */ collapsible?: boolean }
+  | {
+      kind: "thread";
+      communityId: string;
+      /** The community slug: after posting, we go straight to the new thread page. */
+      slug?: string;
+      /** Show a "Start a discussion" button first. */
+      collapsible?: boolean;
+    }
   | { kind: "reply"; threadId: string; /** Extra line, e.g. "This discussion is locked". */ note?: string };
 
 interface FieldErrors {
@@ -119,11 +126,20 @@ export default function PostForm(props: Props) {
       return;
     }
 
+    // New thread: go straight to it, where the "Checking…" chip shows (spec §6).
+    if (props.kind === "thread" && props.slug) {
+      router.push(`/community/${props.slug}/t/${res.data.id}`);
+      return;
+    }
+
     setTitle("");
     setBody("");
     setErrors({});
     if (res.data.status === "held") {
       setHeld(res.data.message?.trim() || HELD_DEFAULT);
+    } else if (res.data.status === "pending") {
+      toast("Posted. We’re doing a quick check before others can see it.");
+      if (collapsible) closeComposer();
     } else {
       toast("Posted");
       if (collapsible) closeComposer();

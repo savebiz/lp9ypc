@@ -1,17 +1,19 @@
 /**
- * POST /api/community/threads — start a conversation (docs/phase-2-contracts.md).
+ * POST /api/community/threads — start a conversation (docs/phase-3-contracts.md).
  *
  * Origin check → signed-in user → service role available → valid input →
- * active community → membership → rate limit → moderation → insert with the
- * service role (author and moderation columns set here, never from the body)
- * → moderation_log → 201 { ok, id, status, message }.
+ * active community → membership → rate limit + create as 'pending' (author
+ * set here, never from the body) → local rules (hold now if hit) → respond
+ * 201 { ok, id, status: "pending" | "held", message } straight away; the AI
+ * check runs after the response (schedulePostModeration).
  */
-import { moderatePost } from "@/lib/agents/moderation";
 import { MESSAGES, checkOrigin, fail, json, parseBody, requireServiceRole, requireUser } from "@/app/api/_lib/http";
 import { boundedText, isUuid } from "@/app/api/_lib/guards";
-import { POST_MESSAGES, claimPostSlot, logPostModeration, moderationColumns, postMessage } from "@/app/api/_lib/community";
+import { POST_MESSAGES, claimPostSlot, moderateInBackground } from "@/app/api/_lib/community";
 
 export const dynamic = "force-dynamic";
+/** The background moderation check (after the response) needs up to ~25 s. */
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   const badOrigin = checkOrigin(req);
@@ -58,18 +60,13 @@ export async function POST(req: Request) {
   if (slot === "limited") return fail(429, POST_MESSAGES.rateLimited);
   const id = slot;
 
-  const result = await moderatePost({ kind: "thread", title, body: text, communityName: c.name });
-  const columns = moderationColumns(result);
-
-  // The post already exists as 'pending' (invisible to others). If this update
-  // fails, the moderation sweep picks up the stuck pending post.
-  const { error: updateError } = await admin.from("threads").update(columns).eq("id", id);
-  if (updateError) {
-    console.error(`[api/community/threads] update failed (${updateError.code ?? "unknown"})`);
-    return fail(500, POST_MESSAGES.saveFailed);
-  }
-
-  await logPostModeration(admin, { communityId: c.id, targetType: "thread", targetId: id, result });
-
-  return json({ ok: true, id, status: columns.status, message: postMessage(columns.status) }, 201);
+  const status = await moderateInBackground(admin, {
+    kind: "thread",
+    id,
+    communityId: c.id,
+    communityName: c.name,
+    title,
+    body: text,
+  });
+  return json({ ok: true, id, status, message: status === "held" ? POST_MESSAGES.held : POST_MESSAGES.pending }, 201);
 }

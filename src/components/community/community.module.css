@@ -187,3 +187,138 @@ a.backLink { color: var(--ink-2); text-decoration: none; margin-top: 16px; }
 .logItem:first-child { border-top: 0; padding-top: 0; }
 .logMeta { margin-top: 2px; font-size: 13px; color: var(--muted); }
 .panelCount { font-size: 14px; color: var(--muted); }
+
+/* ── Phase 3: social features (community-feature-spec) ────────────────── */
+
+/* Body text with "> " quote blocks */
+.postBody > * + * { margin-top: 10px; }
+.bodyText { display: block; }
+.quote {
+  margin: 0; padding: 4px 0 4px 12px; border-left: 3px solid var(--line-strong);
+  color: var(--ink-2); white-space: pre-wrap;
+}
+.replyBody { margin-top: 8px; }
+
+/* Meta line extras */
+.roleBadge {
+  display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px; border-radius: var(--r-pill);
+  font-size: 12px; font-weight: 700; line-height: 1.5; color: var(--blue-dk); background: var(--blue-soft);
+  border: 1px solid #C9D2FF;
+}
+.roleAdmin { color: var(--ink); background: var(--cream); border-color: var(--line-strong); }
+.edited { color: var(--ink-2); }
+.newLabel {
+  display: inline-flex; align-items: center; padding: 0 8px; border-radius: var(--r-pill);
+  font-size: 12px; font-weight: 700; color: var(--ink); background: var(--citrus);
+}
+.replyingLine { margin-top: 6px; font-size: 14px; color: var(--ink-2); }
+
+/* "Checking…" chip */
+.checking { gap: 5px; }
+.checkingPulse :global(svg) { animation: lp9Pulse 1.4s ease-in-out infinite; }
+@keyframes lp9Pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) {
+  .checkingPulse :global(svg) { animation: none; }
+}
+
+/* Action bar: Like · Reply · Share · ⋯ (each ≥ 44×44) */
+.actions {
+  margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  margin-left: -10px;
+}
+.actionBtn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 44px; min-width: 44px; padding: 0 10px; border: 0; border-radius: var(--r-pill);
+  background: transparent; color: var(--ink-2); font: inherit; font-size: 15px; font-weight: 600;
+  cursor: pointer; font-variant-numeric: tabular-nums;
+}
+.actionBtn:hover { background: var(--cream); color: var(--ink); }
+.actionBtn[aria-expanded="true"] { background: var(--cream); color: var(--ink); }
+.actionBtn[aria-disabled="true"] { color: var(--muted); cursor: default; }
+.actionBtn[aria-disabled="true"]:hover { background: transparent; }
+.liked { color: var(--ink); }
+.liked :global(svg) { stroke: var(--ink); }
+.likeStatic {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px;
+  color: var(--ink-2); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.textBtn {
+  min-height: 44px; padding: 0 10px; color: var(--ink-2); font-size: 15px; font-weight: 600; text-decoration: none;
+}
+.textBtn:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ⋯ menu */
+.menuWrap { position: relative; }
+.menu {
+  position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; min-width: 208px; max-width: calc(100vw - 32px);
+  padding: 6px; border: 1px solid var(--line-strong); border-radius: var(--r-card); background: var(--white);
+  box-shadow: 0 8px 24px rgba(11, 15, 44, .14);
+}
+.menuRight { left: auto; right: 0; }
+.menuItem {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 0 12px;
+  border: 0; border-radius: 10px; background: transparent; color: var(--ink); font: inherit; font-size: 15px;
+  font-weight: 500; text-align: left; cursor: pointer;
+}
+.menuItem:hover, .menuItem:focus-visible { background: var(--cream); }
+.menuItem:focus-visible { outline-offset: -3px; }
+.menuDanger { color: var(--coral-ink); }
+
+/* Nested replies: depth 1 indents 12px, depth 2 24px, each with a 2px rail */
+.children {
+  list-style: none; margin: 8px 0 0; padding: 0 0 0 12px; display: grid; gap: 8px;
+  border-left: 2px solid var(--line);
+}
+.children .post { padding: 14px; }
+.postStub { background: var(--paper); border-style: dashed; }
+.postStub .postMeta { color: var(--muted); }
+.stubBody { margin-top: 6px; color: var(--ink-2); font-style: italic; }
+
+/* Brief highlight when opened from a #reply- link */
+.highlight { animation: lp9Highlight 2.4s ease-out; }
+@keyframes lp9Highlight { 0%, 40% { background: var(--blue-soft); } 100% { background: var(--white); } }
+@media (prefers-reduced-motion: reduce) {
+  .highlight { animation: none; outline: 3px solid var(--blue); outline-offset: 2px; }
+}
+.post:focus { outline: none; }
+.post:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+
+/* Inline reply composer and edit form */
+.inlineComposer {
+  margin-top: 10px; padding: 14px; border: 1px solid var(--line-strong); border-radius: var(--r-card);
+  background: var(--cream); scroll-margin-bottom: 120px;
+}
+.inlineComposer :global(.field) { margin-bottom: 10px; }
+.replyingTo { font-size: 14px; font-weight: 600; color: var(--ink-2); margin-bottom: 8px; }
+.editForm { margin-top: 12px; }
+
+/* Board: sort control, counts, "New activity" */
+.sortBar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 14px; }
+.segmented {
+  display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--line-strong); border-radius: var(--r-pill);
+  background: var(--white);
+}
+.segment {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 72px; padding: 0 16px;
+  border-radius: var(--r-pill); color: var(--ink-2); font-size: 15px; font-weight: 600; text-decoration: none;
+}
+.segment:hover { color: var(--ink); background: var(--cream); }
+.segment[aria-current="page"] { background: var(--ink); color: var(--paper); }
+.sortNote { font-size: 14px; color: var(--muted); }
+.newPill {
+  position: relative; z-index: 1; display: inline-flex; align-items: center; padding: 1px 10px; border-radius: var(--r-pill);
+  font-size: 12px; font-weight: 700; color: var(--ink); background: var(--citrus);
+}
+
+/* Loading skeletons */
+.skel {
+  display: block; border-radius: 10px; background: var(--cream);
+  background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, .7), transparent);
+  background-size: 200% 100%; animation: lp9Shimmer 1.4s linear infinite;
+}
+@keyframes lp9Shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
+.skelNav { height: 64px; border-bottom: 1px solid var(--line); background: var(--paper); }
+.skelLine { height: 16px; }
+.skelTitle { height: 32px; width: 70%; }
+.skelBlock { height: 120px; border-radius: var(--r-card); }

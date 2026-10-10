@@ -1,4 +1,4 @@
-// Calls to the community API routes (see docs/phase-2-contracts.md).
+// Calls to the community API routes (see docs/phase-2-contracts.md and phase-3-contracts.md).
 // Every failure comes back as a calm, member-safe sentence — never a raw error.
 
 import type { ModerationAction } from "@/types";
@@ -13,11 +13,11 @@ export interface ModerateRequest {
   reason?: string;
 }
 
-/** Response of POST /api/community/threads and /api/community/replies. */
+/** Response of POST /api/community/threads, /replies and PATCH /api/community/posts. */
 export interface PostResult {
   ok: true;
   id: string;
-  status: "visible" | "held";
+  status: "visible" | "held" | "pending";
   message: string;
 }
 
@@ -26,6 +26,12 @@ export type ApiResult<T> =
   | { ok: false; status: number; error: string };
 
 export const NETWORK_ERROR = "We couldn't reach the server. Check your connection and try again.";
+export const OFFLINE_REPLY = "You seem to be offline. Your reply hasn't been posted.";
+
+/** True when the browser says it has no connection (a hint only; false when unknown). */
+export function isOffline(): boolean {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
 
 interface Fallbacks {
   /** 403 without a server message. */
@@ -54,8 +60,9 @@ function friendly(status: number, server: string | null, fb: Fallbacks): string 
       return server ?? fb.forbidden ?? "You don't have permission to do that here.";
     case 404:
       return server ?? "That post isn't available any more.";
+    case 409:
     case 429:
-      return "You've posted a lot in the last few minutes. Please take a short break, then try again.";
+      return server ?? "You've posted a lot in the last few minutes. Please take a short break, then try again.";
     case 503:
       return fb.unavailable ?? "This isn't switched on yet — we're still finishing the setup. Please try again later.";
     default:
@@ -63,11 +70,20 @@ function friendly(status: number, server: string | null, fb: Fallbacks): string 
   }
 }
 
-export async function postJson<T>(url: string, body: unknown, fallbacks: Fallbacks = {}): Promise<ApiResult<T>> {
+export function postJson<T>(url: string, body: unknown, fallbacks: Fallbacks = {}): Promise<ApiResult<T>> {
+  return sendJson<T>("POST", url, body, fallbacks);
+}
+
+export async function sendJson<T>(
+  method: "POST" | "PATCH",
+  url: string,
+  body: unknown,
+  fallbacks: Fallbacks = {},
+): Promise<ApiResult<T>> {
   let res: Response;
   try {
     res = await fetch(url, {
-      method: "POST",
+      method,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
       credentials: "same-origin",
@@ -95,5 +111,13 @@ export function moderate(req: ModerateRequest) {
   return postJson<{ ok: true }>("/api/community/moderate", req, {
     forbidden: "Only this community's managers can do that.",
     unavailable: "Moderation tools aren't switched on yet. Please try again later.",
+  });
+}
+
+/** PATCH /api/community/posts — edit your own post. */
+export function editPost(req: { targetType: "thread" | "reply"; targetId: string; title?: string; body: string }) {
+  return sendJson<PostResult>("PATCH", "/api/community/posts", req, {
+    forbidden: "You can't edit this post right now.",
+    unavailable: "Editing isn't switched on yet — we're still finishing the setup. Please try again later.",
   });
 }

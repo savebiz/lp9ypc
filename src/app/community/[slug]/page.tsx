@@ -1,24 +1,35 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { ArrowLeft, MessageSquare, MessagesSquare, Settings2, ShieldCheck, Users } from "lucide-react";
+import { ArrowLeft, Heart, MessageSquare, MessagesSquare, Settings2, ShieldCheck, Users } from "lucide-react";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { CommunityIcon } from "@/components/community/CommunityIcon";
 import JoinButton from "@/components/community/JoinButton";
 import PostForm from "@/components/community/PostForm";
-import { LockedBadge, PinnedBadge, StatusBadge, TimeAgo } from "@/components/community/PostBits";
+import NewActivityPill from "@/components/community/NewActivityPill";
+import { LockedBadge, PinnedBadge, RoleBadge, StatusBadge, TimeAgo } from "@/components/community/PostBits";
 import { ToastHost } from "@/components/community/Toast";
 import { plural } from "@/components/community/time";
 import styles from "@/components/community/community.module.css";
 import { getSession } from "@/lib/session";
-import { displayNames, loadCommunity, nameOf, viewerAndManagers } from "../_lib/data";
+import { displayNames, loadCommunity, nameOf, roleBadges, viewerAndManagers } from "../_lib/data";
 import type { CommunityOverview, Thread } from "@/types";
 
 type ThreadRow = Pick<
   Thread,
-  "id" | "author_id" | "title" | "status" | "is_pinned" | "is_locked" | "reply_count" | "last_activity_at" | "created_at"
+  "id" | "author_id" | "title" | "status" | "is_pinned" | "is_locked" | "reply_count" | "last_activity_at" | "created_at" | "like_count"
 >;
+
+const BOARD_COLUMNS = "id, author_id, title, status, is_pinned, is_locked, reply_count, last_activity_at, created_at, like_count";
+
+type Sort = "active" | "new" | "top";
+const SORTS: { key: Sort; label: string }[] = [
+  { key: "active", label: "Active" },
+  { key: "new", label: "New" },
+  { key: "top", label: "Top" },
+];
+const parseSort = (v: string | string[] | undefined): Sort => (v === "new" || v === "top" ? v : "active");
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
@@ -26,8 +37,15 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return { title: community ? `${community.name} · Communities · LP9 YPC` : "Communities · LP9 YPC" };
 }
 
-export default async function CommunityPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
+export default async function CommunityPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ sort?: string | string[] }>;
+}) {
+  const [{ slug }, query] = await Promise.all([params, searchParams]);
+  const sort = parseSort(query.sort);
   const [{ community, failed }, session] = await Promise.all([loadCommunity(slug), getSession()]);
   const { supabase, user, userName, isAdmin } = session;
 
@@ -57,15 +75,7 @@ export default async function CommunityPage({ params }: { params: Promise<{ slug
       .eq("community_id", community.id)
       .maybeSingle(),
     user ? viewerAndManagers(supabase, community.id, user.id) : Promise.resolve({ role: null, managerIds: [] as string[] }),
-    user
-      ? supabase
-          .from("threads")
-          .select("id, author_id, title, status, is_pinned, is_locked, reply_count, last_activity_at, created_at")
-          .eq("community_id", community.id)
-          .order("is_pinned", { ascending: false })
-          .order("last_activity_at", { ascending: false })
-          .limit(50)
-      : Promise.resolve({ data: [] as ThreadRow[], error: null }),
+    user ? loadBoard(supabase, community.id, sort) : Promise.resolve({ data: [] as ThreadRow[], error: null }),
   ]);
 
   const overview = overviewRes.data as CommunityOverview | null;
@@ -83,9 +93,12 @@ export default async function CommunityPage({ params }: { params: Promise<{ slug
       (canModerate && t.status === "held"),
   );
 
-  const names = user
-    ? await displayNames(supabase, [...threads.map((t) => t.author_id), ...viewer.managerIds])
-    : new Map<string, string>();
+  const [names, badges] = user
+    ? await Promise.all([
+        displayNames(supabase, [...threads.map((t) => t.author_id), ...viewer.managerIds]),
+        roleBadges(supabase, threads.map((t) => t.author_id), viewer.managerIds),
+      ])
+    : [new Map<string, string>(), {} as Record<string, "admin" | "manager">];
   const managerNames = viewer.managerIds.map((id) => nameOf(names, id));
   const kindLabel = community.kind === "career" ? "Career community" : "Interest community";
 
@@ -157,7 +170,7 @@ export default async function CommunityPage({ params }: { params: Promise<{ slug
           <>
             <div className={styles.section} style={{ marginTop: 24 }}>
               {isMember ? (
-                <PostForm kind="thread" communityId={community.id} collapsible />
+                <PostForm kind="thread" communityId={community.id} slug={community.slug} collapsible />
               ) : (
                 <div className="card card-cream">
                   <p>
@@ -174,6 +187,23 @@ export default async function CommunityPage({ params }: { params: Promise<{ slug
               <div className={styles.sectionHead}>
                 <h2 id="threads-h">Discussions</h2>
               </div>
+              <div className={styles.sortBar}>
+                <nav className={styles.segmented} aria-label="Sort discussions">
+                  {SORTS.map((s) => (
+                    <Link
+                      key={s.key}
+                      href={s.key === "active" ? `/community/${community.slug}` : `/community/${community.slug}?sort=${s.key}`}
+                      className={styles.segment}
+                      aria-current={sort === s.key ? "page" : undefined}
+                      scroll={false}
+                      replace
+                    >
+                      {s.label}
+                    </Link>
+                  ))}
+                </nav>
+                {sort === "top" && <span className={styles.sortNote}>Most liked, all time</span>}
+              </div>
 
               {threadsFailed ? (
                 <div className="empty" role="status">
@@ -181,8 +211,9 @@ export default async function CommunityPage({ params }: { params: Promise<{ slug
                 </div>
               ) : threads.length === 0 ? (
                 <div className="empty">
-                  No discussions yet.{" "}
-                  {isMember ? "Start the first one — ask a question or say hello." : "Join the community to start the first one."}
+                  {isMember
+                    ? "No discussions yet. Start the first one — ask a question or share something useful."
+                    : `No discussions yet. Join ${community.name} to start the first one.`}
                 </div>
               ) : (
                 <ul className={styles.threads}>
@@ -199,7 +230,7 @@ export default async function CommunityPage({ params }: { params: Promise<{ slug
                           </div>
                         )}
                         <h3 className={styles.threadTitle}>
-                          <Link href={`/community/${community.slug}/t/${t.id}`} className={styles.stretched}>
+                          <Link href={`/community/${community.slug}/t/${t.id}`} className={styles.stretched} prefetch>
                             {t.title}
                           </Link>
                         </h3>
@@ -207,6 +238,7 @@ export default async function CommunityPage({ params }: { params: Promise<{ slug
                           <span>
                             {nameOf(names, t.author_id)}
                             {own ? " (you)" : ""}
+                            <RoleBadge role={badges[t.author_id]} />
                           </span>
                           <span aria-hidden="true">·</span>
                           <TimeAgo date={t.created_at} />
@@ -214,11 +246,17 @@ export default async function CommunityPage({ params }: { params: Promise<{ slug
                           <span>
                             <MessageSquare size={14} aria-hidden="true" /> {plural(t.reply_count, "reply", "replies")}
                           </span>
+                          {t.like_count > 0 && (
+                            <span>
+                              <Heart size={14} aria-hidden="true" /> {plural(t.like_count, "like")}
+                            </span>
+                          )}
                           {t.reply_count > 0 && t.last_activity_at !== t.created_at && (
                             <span>
                               last reply <TimeAgo date={t.last_activity_at} />
                             </span>
                           )}
+                          <NewActivityPill threadId={t.id} lastActivityAt={t.last_activity_at} />
                         </p>
                       </li>
                     );
@@ -233,4 +271,13 @@ export default async function CommunityPage({ params }: { params: Promise<{ slug
       <ToastHost />
     </>
   );
+}
+
+/** Board order (community-feature-spec §9): pinned first, then by the chosen sort. */
+function loadBoard(supabase: Awaited<ReturnType<typeof getSession>>["supabase"], communityId: string, sort: Sort) {
+  let q = supabase.from("threads").select(BOARD_COLUMNS).eq("community_id", communityId).order("is_pinned", { ascending: false });
+  if (sort === "new") q = q.order("created_at", { ascending: false });
+  else if (sort === "top") q = q.order("like_count", { ascending: false }).order("last_activity_at", { ascending: false });
+  else q = q.order("last_activity_at", { ascending: false });
+  return q.limit(50);
 }

@@ -33,11 +33,12 @@ export const loadCommunity = cache(async (slug: string): Promise<{ community: Co
   return { community: (data as Community | null) ?? null, failed: false };
 });
 
+// Never select("*") on posts: the moderation columns are not granted to members.
 export const THREAD_COLUMNS =
-  "id, community_id, author_id, title, body, status, needs_review, is_pinned, is_locked, reply_count, last_activity_at, created_at, updated_at";
+  "id, community_id, author_id, title, body, status, needs_review, is_pinned, is_locked, reply_count, last_activity_at, created_at, updated_at, like_count, edited_at";
 
 export const REPLY_COLUMNS =
-  "id, thread_id, community_id, author_id, body, status, needs_review, created_at, updated_at";
+  "id, thread_id, community_id, author_id, body, status, needs_review, created_at, updated_at, parent_id, depth, like_count, edited_at";
 
 /**
  * One thread by id, as the signed-in viewer is allowed to see it (RLS hides
@@ -58,6 +59,35 @@ export async function displayNames(supabase: ServerClient, ids: (string | null |
   if (unique.length === 0) return new Map();
   const { data } = await supabase.from("member_directory").select("id, display_name").in("id", unique);
   return new Map(((data ?? []) as { id: string; display_name: string }[]).map((r) => [r.id, r.display_name]));
+}
+
+/**
+ * Author id → "admin" | "manager" for the role badges. Managers come from
+ * community_members rows (readable by members); admins from the
+ * admin_badges() function, which returns only the ids of admins among those
+ * asked about. If that function fails (or isn't installed), no admin badge.
+ */
+export async function roleBadges(
+  supabase: ServerClient,
+  authorIds: (string | null | undefined)[],
+  managerIds: string[],
+): Promise<Record<string, "admin" | "manager">> {
+  const unique = [...new Set(authorIds.filter((x): x is string => !!x))].slice(0, 200);
+  const out: Record<string, "admin" | "manager"> = {};
+  const managers = new Set(managerIds);
+  for (const id of unique) if (managers.has(id)) out[id] = "manager";
+  if (unique.length === 0) return out;
+  try {
+    const { data, error } = await supabase.rpc("admin_badges", { p_ids: unique });
+    if (!error && Array.isArray(data)) {
+      for (const row of data as { id?: unknown }[]) {
+        if (typeof row?.id === "string" && unique.includes(row.id)) out[row.id] = "admin";
+      }
+    }
+  } catch {
+    // No admin badges rather than a broken page.
+  }
+  return out;
 }
 
 export function nameOf(names: Map<string, string>, id: string | null | undefined): string {

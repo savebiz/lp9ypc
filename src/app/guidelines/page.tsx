@@ -35,10 +35,17 @@ export default async function GuidelinesPage() {
       icon: Heart,
       title: "Be kind",
       body: (
-        <p>
-          Disagree with ideas, not people. Assume the best of each other, and remember there&apos;s a real person
-          behind every post.
-        </p>
+        <>
+          <p>
+            Disagree with ideas, not people. Assume the best of each other, and remember there&apos;s a real person
+            behind every post.
+          </p>
+          <p>
+            When you reply, answer the person kindly, even if you think they&apos;re wrong. If you quote someone, quote
+            them fairly. Use likes to encourage each other; you can&apos;t like your own posts, and only the number of
+            likes is shown, never who liked.
+          </p>
+        </>
       ),
     },
     {
@@ -71,10 +78,17 @@ export default async function GuidelinesPage() {
       icon: LockKeyhole,
       title: "Protect privacy",
       body: (
-        <p>
-          Don&apos;t post phone numbers, home addresses or ID numbers, yours or anyone else&apos;s. When you share
-          a job, link to its official application page.
-        </p>
+        <>
+          <p>
+            Don&apos;t post phone numbers, home addresses or ID numbers, yours or anyone else&apos;s. When you share
+            a job, link to its official application page.
+          </p>
+          <p>
+            Discussions are for YPC members only. You&apos;re welcome to share a link with someone; they&apos;ll need
+            to sign in as a member to read it. Please ask before sharing a screenshot of someone else&apos;s post
+            outside YPC.
+          </p>
+        </>
       ),
     },
     {
@@ -144,7 +158,10 @@ export default async function GuidelinesPage() {
           <ol role="list" className={styles.steps}>
             <li className={styles.step}>
               <h3>Every post is checked first</h3>
-              <p>An AI moderation assistant reads each new post and reply before it appears. Most appear straight away.</p>
+              <p>
+                An AI moderation assistant reads each new post, reply and edit before other members can see it. You&apos;ll
+                see your post straight away marked &ldquo;Checking…&rdquo;; most are cleared within a few seconds.
+              </p>
             </li>
             <li className={styles.step}>
               <h3>Anything it&apos;s unsure about waits for a person</h3>
@@ -177,7 +194,11 @@ export default async function GuidelinesPage() {
               what&apos;s wrong. Your report goes to that community&apos;s managers and the YPC admins. The person you
               report isn&apos;t told who reported them.
             </p>
-            <p>You can delete your own posts at any time.</p>
+            <p>
+              You can edit or delete your own posts at any time. Edited posts are marked &ldquo;edited&rdquo; and are
+              checked again before others can see the new version, so please don&apos;t use edits to change the meaning
+              of a post people have already replied to.
+            </p>
             <p>
               Managers may hold or remove posts that break these guidelines. For serious or repeated problems, the
               YPC team may get in touch with you.

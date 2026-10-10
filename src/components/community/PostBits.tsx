@@ -1,4 +1,4 @@
-import { Clock, EyeOff, Lock, Pin } from "lucide-react";
+import { Clock, EyeOff, Lock, Pin, ShieldCheck } from "lucide-react";
 import { fullDateTime, relativeTime } from "./time";
 import styles from "./community.module.css";
 import type { PostStatus } from "@/types";
@@ -8,7 +8,7 @@ import type { PostStatus } from "@/types";
 const STATUS_LABEL: Record<Exclude<PostStatus, "visible">, string> = {
   held: "Held for review",
   removed: "Removed",
-  pending: "Being checked",
+  pending: "Checking…",
 };
 
 export function StatusBadge({ status }: { status: PostStatus }) {
@@ -20,6 +20,71 @@ export function StatusBadge({ status }: { status: PostStatus }) {
       <Icon size={13} aria-hidden="true" /> {STATUS_LABEL[status]}
     </span>
   );
+}
+
+/** "Checking…" chip shown to the author (and moderators) while a post waits for its check. */
+export function CheckingChip({ pulse = false }: { pulse?: boolean }) {
+  return (
+    <span className={`${styles.badge} ${styles.badgeHeld} ${styles.checking}${pulse ? ` ${styles.checkingPulse}` : ""}`}>
+      <Clock size={13} aria-hidden="true" /> Checking…
+    </span>
+  );
+}
+
+/** Manager / Admin chip after an author's name (text, not colour alone). */
+export function RoleBadge({ role }: { role: "admin" | "manager" | undefined | null }) {
+  if (!role) return null;
+  return (
+    <span className={`${styles.roleBadge}${role === "admin" ? ` ${styles.roleAdmin}` : ""}`}>
+      <ShieldCheck size={12} aria-hidden="true" /> {role === "admin" ? "Admin" : "Manager"}
+    </span>
+  );
+}
+
+/** "· edited" with the full edit time as a tooltip. Shown to everyone. */
+export function EditedMark({ editedAt }: { editedAt: string | null | undefined }) {
+  if (!editedAt) return null;
+  return (
+    <>
+      <span aria-hidden="true">·</span>
+      <span className={styles.edited} title={`Edited ${fullDateTime(editedAt)}`}>edited</span>
+    </>
+  );
+}
+
+/**
+ * Post text with "> " lines shown as quote blocks (left rule, ink-2).
+ * Plain text only — nothing is rendered as HTML.
+ */
+export function PostBody({ text, className }: { text: string; className?: string }) {
+  const blocks: { quote: boolean; lines: string[] }[] = [];
+  for (const line of text.split("\n")) {
+    const isQuote = line.startsWith("> ") || line === ">";
+    const content = isQuote ? line.replace(/^>\s?/, "") : line;
+    const last = blocks[blocks.length - 1];
+    if (last && last.quote === isQuote) last.lines.push(content);
+    else blocks.push({ quote: isQuote, lines: [content] });
+  }
+  return (
+    <div className={`${styles.postBody}${className ? ` ${className}` : ""}`}>
+      {blocks.map((b, i) =>
+        b.quote ? (
+          <blockquote key={i} className={styles.quote}>{b.lines.join("\n")}</blockquote>
+        ) : (
+          <span key={i} className={styles.bodyText}>{trimBlankEdges(b.lines, i > 0, i < blocks.length - 1).join("\n")}</span>
+        ),
+      )}
+    </div>
+  );
+}
+
+/** Drops the blank line between a quote and the text after it (the block gap replaces it). */
+function trimBlankEdges(lines: string[], afterBlock: boolean, beforeBlock: boolean): string[] {
+  let start = 0;
+  let end = lines.length;
+  if (afterBlock) while (start < end && lines[start].trim() === "") start++;
+  if (beforeBlock) while (end > start && lines[end - 1].trim() === "") end--;
+  return lines.slice(start, end);
 }
 
 export function PinnedBadge() {
