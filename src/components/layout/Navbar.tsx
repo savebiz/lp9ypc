@@ -17,7 +17,7 @@ interface NavbarProps {
 export function Logo() {
   return (
     <Link href="/" className="logo" aria-label="LP9 YPC home">
-      <CoBrandedLogo crestSize={34} markSize={28} />
+      <CoBrandedLogo />
     </Link>
   );
 }

@@ -2,8 +2,7 @@
 // touching layout code. Keep every claim here true: no invented numbers,
 // testimonials or features that don't exist yet.
 //
-// TODO(Victor): replace MISSION with the club's official mission/vision
-// wording. The line below is the existing copy from the site footer.
+// VISION approved by Victor on 2026-10-10. MISSION is the existing footer line.
 
 export const SITE = {
   name: "LP9 YPC",
@@ -17,6 +16,9 @@ export const HERO = {
   summary:
     "A community for young professionals in Lagos Province 9. Find jobs, join a career path, and grow together.",
 };
+
+export const VISION =
+  "A community of young professionals in Lagos Province 9 who grow in faith, do excellent work and lift each other up.";
 
 export const MISSION =
   "Connecting, equipping and empowering young professionals across Lagos Province 9.";

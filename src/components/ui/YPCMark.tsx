@@ -1,22 +1,93 @@
 import Image from "next/image";
 
-/** Official RCCG YAYA Crest Logo */
-export function YAYACrest({ size = 38 }: { size?: number }) {
+/*
+ * LP9 YPC logo system. Rules: context/brand-guidelines.md (brain repo).
+ *
+ * Two official marks, always used as supplied (never recoloured, stretched,
+ * cropped or redrawn):
+ *  - LP9 YAYA crest  public/branding/lp9-yaya-crest.png  (328×397). This is
+ *    lp9-yaya-logo.png with only its empty transparent margin trimmed, so the
+ *    crest isn't shrunk by padding at small sizes. Artwork untouched.
+ *  - Official YPC logo  public/branding/ypc-logo.png  (914×322, transparent).
+ *
+ * Sizes are set in CSS (.brand-* in globals.css) by height, width auto, so
+ * the aspect ratio is always kept. The width/height props below are the
+ * largest rendered size: next/image uses them for the 1x/2x srcset.
+ */
+
+const CREST = { src: "/branding/lp9-yaya-crest.png", ratio: 328 / 397 };
+const YPC = { src: "/branding/ypc-logo.png", ratio: 914 / 322 };
+
+const CREST_ALT = "RCCG Lagos Province 9 Young Adults & Youths crest";
+const YPC_ALT = "Young Professionals Club";
+
+/** LP9 YAYA crest (RCCG Lagos Province 9 Young Adults & Youths). */
+export function YAYACrest({
+  height = 52,
+  className = "brand-crest",
+  preload = false,
+  decorative = false,
+}: { height?: number; className?: string; preload?: boolean; decorative?: boolean }) {
   return (
-    <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-      <Image
-        src="/yaya-crest.png"
-        alt="RCCG Young Adults & Youths logo"
-        width={size}
-        height={size}
-        style={{ objectFit: "contain", height: size, width: "auto" }}
-        priority
-      />
-    </div>
+    <Image
+      src={CREST.src}
+      alt={decorative ? "" : CREST_ALT}
+      width={Math.round(height * CREST.ratio)}
+      height={height}
+      className={className}
+      preload={preload}
+    />
   );
 }
 
-/** The YPC connection mark: three joined dots. The only illustrative motif. */
+/** Official YPC logo: three-figure mark + stacked "YOUNG PROFESSIONALS CLUB". */
+export function YPCLogo({
+  height = 48,
+  className = "brand-ypc",
+  preload = false,
+  decorative = false,
+}: { height?: number; className?: string; preload?: boolean; decorative?: boolean }) {
+  return (
+    <Image
+      src={YPC.src}
+      alt={decorative ? "" : YPC_ALT}
+      width={Math.round(height * YPC.ratio)}
+      height={height}
+      className={className}
+      preload={preload}
+    />
+  );
+}
+
+/**
+ * Header co-brand: crest | divider | official YPC logo.
+ * Phone: crest 46px tall + YPC logo 44px tall (~185px wide in total, of the
+ * ~267px free beside the 44px menu button at 375px). Desktop: crest 52 + YPC 48,
+ * plus a "Lagos Province 9" label from 1200px where the nav has room.
+ */
+export function CoBrandedLogo() {
+  return (
+    <span className="brand-lockup">
+      <YAYACrest height={52} preload />
+      <span className="brand-divider" aria-hidden="true" />
+      <YPCLogo height={48} preload />
+      <span className="brand-label" aria-hidden="true">Lagos<br />Province 9</span>
+    </span>
+  );
+}
+
+/** Footer co-brand on a light panel, so the blue logo keeps its contrast on the ink footer. */
+export function FooterLogo() {
+  return (
+    <span className="brand-panel">
+      <YAYACrest height={56} className="brand-crest-foot" />
+      <span className="brand-divider" aria-hidden="true" />
+      <YPCLogo height={48} className="brand-ypc-foot" />
+    </span>
+  );
+}
+
+/** Abstract connection motif (three joined dots) for empty states. Not a logo. */
 export function FigureMark({ size = 40, color = "var(--blue)" }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" fill="none" aria-hidden="true" focusable="false">
@@ -30,54 +101,22 @@ export function FigureMark({ size = 40, color = "var(--blue)" }: { size?: number
   );
 }
 
-/** Co-branded logo combining RCCG YAYA Crest with LP9 YPC logo mark */
-export function CoBrandedLogo({ crestSize = 36, markSize = 32 }: { crestSize?: number; markSize?: number }) {
-  return (
-    <div style={{ display: "inline-flex", alignItems: "center", gap: "10px" }}>
-      <YAYACrest size={crestSize} />
-      <span style={{ width: 1, height: crestSize * 0.75, backgroundColor: "var(--border, #E5E7EB)", display: "inline-block" }} />
-      <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
-        <FigureMark size={markSize} />
-        <span className="logo-text">
-          YPC
-          <small>LAGOS PROVINCE 9</small>
-        </span>
-      </div>
-    </div>
-  );
-}
-
-/** Desktop-only hero decoration: a dot grid with a large crop of the mark. Pure SVG/CSS, no image requests. */
-export function HeroArt() {
-  return (
-    <div className="hero-art" aria-hidden="true">
-      <div className="dot-grid" style={{ position: "absolute", inset: 0, borderRadius: 24 }} />
-      <div style={{ position: "absolute", inset: 40 }}>
-        <FigureMark size={280} />
-      </div>
-    </div>
-  );
-}
-
-/** Desktop-only hero decoration: official LP9 YPC × RCCG YAYA logo crest.
- *  Replaces the abstract FigureMark SVG with the real branded asset.
- *  Reuses .hero-art for absolute positioning; animation defined in globals.css.
+/**
+ * Desktop-only hero decoration (hidden below 1000px, so no image request on
+ * phones' first screen): the LP9 YAYA crest on a soft dot grid. Decorative:
+ * the same crest is already named in the header.
  */
 export function HeroLogoArt() {
   return (
     <div className="hero-art" aria-hidden="true">
+      <div className="dot-grid hero-art-grid" />
       <Image
-        src="/branding/LP9_YAYA_Logo-bg.png"
-        alt="LP9 YPC Young Professionals Club crest"
-        priority
-        width={400}
+        src={CREST.src}
+        alt=""
+        width={330}
         height={400}
-        style={{
-          objectFit: "contain",
-          width: "100%",
-          height: "100%",
-          filter: "drop-shadow(0 8px 32px rgba(11,15,44,0.12))",
-        }}
+        sizes="330px"
+        className="hero-art-crest"
       />
     </div>
   );

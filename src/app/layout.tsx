@@ -18,11 +18,26 @@ const inter = Inter({
   display: "swap",
 });
 
+const DESCRIPTION =
+  "The community platform for young professionals in RCCG Lagos Province 9. Register, join a career path, and apply to jobs in one tap.";
+
+// Icons come from src/app/icon.png + apple-icon.png (LP9 YAYA crest) and the
+// share image from src/app/opengraph-image.tsx, by Next file convention.
+// metadataBase makes the share-image URL absolute. Set NEXT_PUBLIC_SITE_URL
+// when the club domain goes live.
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://lp9ypc.vercel.app"),
   title: "LP9 YPC · Young Professionals Club",
-  description:
-    "The community platform for young professionals in RCCG Lagos Province 9. Register, join a career path, and apply to jobs in one tap.",
+  description: DESCRIPTION,
   keywords: ["LP9 YPC", "Lagos Province 9", "RCCG", "Young Professionals", "jobs", "career"],
+  openGraph: {
+    type: "website",
+    siteName: "LP9 YPC",
+    title: "LP9 YPC · Young Professionals Club",
+    description: DESCRIPTION,
+    locale: "en_NG",
+  },
+  twitter: { card: "summary_large_image" },
 };
 
 // No maximumScale: members must be able to pinch-zoom.
