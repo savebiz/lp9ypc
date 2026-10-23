@@ -1,0 +1,58 @@
+# LP9 YPC checks: run on every pull request and on pushes to phase-1-mvp.
+# Uses NO secrets. The build gets dummy public Supabase values (a local
+# address that refuses connections), so nothing here can reach the live
+# database.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [phase-1-mvp]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Type-check, test, build, audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      # Dummy, non-secret values: only so `next build` can create the Supabase clients.
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-dummy-anon-key
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # --ignore-scripts: no package install hooks run on the CI machine.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      # next-env.d.ts is git-ignored; typegen recreates it (CSS-module and
+      # route types) so tsc sees the same types as a local checkout.
+      - name: Generate Next.js types
+        run: npx next typegen
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npx next build
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high

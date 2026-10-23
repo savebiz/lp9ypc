@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { adminMfaState } from "@/lib/supabase/mfa";
 import { cronAuthStatus, isSameOrigin, readJsonBody } from "./guards";
 
 const NO_STORE = { "Cache-Control": "no-store" };
@@ -24,6 +25,7 @@ export const MESSAGES = {
   badOrigin: "This request wasn't allowed. Please reload the page and try again.",
   signIn: "Please sign in first.",
   notAdmin: "Only admins can do that.",
+  mfaRequired: "Please enter your two-step sign-in code first. Reload the admin page to continue.",
   serviceUnavailable: "This isn't available right now because the server isn't fully set up. Please try again later.",
   serverError: "Something went wrong on our side. Please try again.",
 } as const;
@@ -57,7 +59,10 @@ export async function requireUser(): Promise<
   }
 }
 
-/** requireUser() + profiles.role = 'admin', else 403. */
+/**
+ * requireUser() + profiles.role = 'admin', else 403. When ADMIN_MFA_REQUIRED
+ * is "true", the session must also be aal2 (password + authenticator code).
+ */
 export async function requireAdmin(): Promise<
   { supabase: SessionClient; user: User; response?: undefined } | { response: NextResponse }
 > {
@@ -65,6 +70,8 @@ export async function requireAdmin(): Promise<
   if (auth.response) return auth;
   const { data, error } = await auth.supabase.from("profiles").select("role").eq("id", auth.user.id).maybeSingle();
   if (error || (data as { role?: string } | null)?.role !== "admin") return { response: fail(403, MESSAGES.notAdmin) };
+  const mfa = await adminMfaState(auth.supabase, auth.user);
+  if (!mfa.ok) return { response: fail(403, MESSAGES.mfaRequired) };
   return auth;
 }
 

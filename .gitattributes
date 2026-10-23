@@ -1,0 +1,7 @@
+# Store text files with LF line endings. (No mass renormalisation was done
+# when this was added; files pick it up as they are next changed.)
+* text=auto eol=lf
+
+# Windows batch files must keep CRLF or cmd.exe can misread them.
+*.cmd text eol=crlf
+*.bat text eol=crlf

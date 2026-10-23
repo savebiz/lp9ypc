@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "ai:local": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/local-ai-worker.ts"
+    "test": "node --test tests/agents tests/career",
+    "ai:local": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/local-ai-worker.ts",
+    "db:backup": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/backup-db.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
