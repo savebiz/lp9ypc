@@ -57,14 +57,13 @@ export default function AdminClient({ data }: { data: AdminData }) {
     return m;
   }, [memberPaths, careerPaths]);
 
-  // Pending/rejected jobs (from the job finder) live in the Review queue, not the Jobs list.
-  const listedJobs = data.jobs.filter((j) => j.review_status !== "pending" && j.review_status !== "rejected");
-  const pendingJobs = data.jobs.filter((j) => j.review_status === "pending")
-    .sort((a, b) => a.created_at.localeCompare(b.created_at));
-  const rejectedJobs = data.jobs.filter((j) => j.review_status === "rejected").slice(0, 20);
+  // Jobs are paged inside the Jobs and Review queue tabs; the page only sends counts
+  // plus the few jobs that feedback points at.
+  const { jobCounts, feedbackJobs } = data;
   const heldCount = data.heldThreads.length + data.heldReplies.length;
   const moderationCount = heldCount + data.openReports.length;
-  const listedJobIds = useMemo(() => new Set(listedJobs.map((j) => j.id)), [listedJobs]);
+  // Approved jobs open in the Jobs editor ("Fix it now"); pending ones live in the Review queue.
+  const listedJobIds = useMemo(() => new Set(feedbackJobs.filter((j) => j.review_status === "approved").map((j) => j.id)), [feedbackJobs]);
   const newFeedback = data.feedback ? data.feedback.filter((f) => f.status === "new").length : null;
 
   // Live jobs with 2 or more open "This link doesn't work" reports (members or the assistant).
@@ -77,16 +76,16 @@ export default function AdminClient({ data }: { data: AdminData }) {
       }
     }
     const health = new Map((data.linkHealth ?? []).map((h) => [h.job_id, h.fail_count]));
-    return data.jobs
+    return feedbackJobs
       .filter((j) => j.is_active && listedJobIds.has(j.id) && (n.get(j.id) ?? 0) >= 2)
       .map((j) => ({ job: j, reports: n.get(j.id) ?? 0, failCount: health.get(j.id) ?? null }))
       .sort((a, b) => b.reports - a.reports);
-  }, [data.feedback, data.linkHealth, data.jobs, listedJobIds]);
+  }, [data.feedback, data.linkHealth, feedbackJobs, listedJobIds]);
 
   const tabs: { key: Tab; label: string }[] = [
     { key: "overview", label: "Overview" },
-    { key: "jobs", label: `Jobs (${listedJobs.length})` },
-    { key: "review", label: `Review queue (${pendingJobs.length})` },
+    { key: "jobs", label: `Jobs (${jobCounts.listed})` },
+    { key: "review", label: `Review queue (${jobCounts.pending})` },
     { key: "sources", label: "Job sources" },
     { key: "members", label: `Members (${members.length})` },
     { key: "communities", label: "Communities" },
@@ -144,9 +143,11 @@ export default function AdminClient({ data }: { data: AdminData }) {
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className={styles.panel}>
         {tab === "overview" && (
           <OverviewTab
-            jobs={data.jobs} members={members} careerPaths={careerPaths} memberPaths={memberPaths}
+            openJobs={jobCounts.open} members={members} careerPaths={careerPaths} memberPaths={memberPaths}
             queues={{
-              pendingJobs: pendingJobs.length,
+              pendingJobs: jobCounts.pending,
+              oldestPendingAt: jobCounts.oldestPendingAt,
+              assistantErrors24h: data.assistantErrors24h,
               heldPosts: heldCount,
               openReports: data.openReports.length,
               careerIdeas: data.candidates.length,
@@ -161,11 +162,11 @@ export default function AdminClient({ data }: { data: AdminData }) {
           />
         )}
         {tab === "jobs" && (
-          <JobsTab key={editTarget?.tab === "jobs" ? editTarget.id : "list"} jobs={listedJobs} careerPaths={careerPaths} jobSources={data.jobSources}
+          <JobsTab key={editTarget?.tab === "jobs" ? editTarget.id : "list"} careerPaths={careerPaths} jobSources={data.jobSources}
             adminId={data.adminId} editId={editTarget?.tab === "jobs" ? editTarget.id : null} {...actions} />
         )}
         {tab === "review" && (
-          <ReviewQueueTab pending={pendingJobs} rejected={rejectedJobs} careerPaths={careerPaths} jobSources={data.jobSources}
+          <ReviewQueueTab careerPaths={careerPaths} jobSources={data.jobSources}
             adminId={data.adminId} {...actions} />
         )}
         {tab === "sources" && <JobSourcesTab sources={data.jobSources} adminId={data.adminId} {...actions} />}
@@ -180,7 +181,7 @@ export default function AdminClient({ data }: { data: AdminData }) {
             communities={data.communities} members={members} {...actions} />
         )}
         {tab === "feedback" && data.feedback && (
-          <FeedbackTab feedback={data.feedback} jobs={data.jobs} editableJobIds={listedJobIds} announcements={data.announcements}
+          <FeedbackTab feedback={data.feedback} jobs={feedbackJobs} editableJobIds={listedJobIds} announcements={data.announcements}
             careerPaths={careerPaths} communities={data.communities} members={members} onFixIt={fixIt} {...actions} />
         )}
         {tab === "ideas" && <CareerIdeasTab candidates={data.candidates} careerPaths={careerPaths} adminId={data.adminId} {...actions} />}

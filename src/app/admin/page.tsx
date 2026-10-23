@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation";
 import Navbar from "@/components/layout/Navbar";
 import AdminClient from "./AdminClient";
-import type { AdminData } from "./tabs/shared";
+import type { AdminData, JobRef } from "./tabs/shared";
 import { getSession } from "@/lib/session";
+import { requireAdminMfa } from "./security/gate";
 import { withModerationNotes } from "@/lib/moderation-notes";
 import type {
-  AdminAuditEntry, AgentRun, Announcement, CareerPath, CareerPathCandidate, Community, CommunityOverview, Feedback, Job, JobSource,
+  AdminAuditEntry, AgentRun, Announcement, CareerPath, CareerPathCandidate, Community, CommunityOverview, Feedback, JobSource,
   LinkHealth, Profile, Reply, Report, Thread,
 } from "@/types";
 
@@ -25,6 +26,12 @@ function isMissingTable(error: { code?: string; message?: string } | null): bool
   return error.code === "42P01" || error.code === "PGRST205" || /does not exist|schema cache/i.test(error.message ?? "");
 }
 
+/** Today's date in Lagos (YYYY-MM-DD): a deadline is open until the end of its Lagos day. */
+function lagosToday(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+
+const JOB_REF_COLS = "id, title, company, is_active, review_status";
 
 export default async function AdminPage() {
   const { supabase, user, isAdmin, userName } = await getSession();
@@ -32,9 +39,17 @@ export default async function AdminPage() {
   // Server-side role check. The database's row-level security enforces the
   // same rule on every query, so this page can't leak data even if bypassed.
   if (!isAdmin) redirect("/dashboard");
+  // Two-step sign-in (only when ADMIN_MFA_REQUIRED=true; see /admin/security).
+  await requireAdminMfa(supabase, user, "/admin");
 
-  const [jobsRes, membersRes, pathsRes, annRes, linksRes] = await Promise.all([
-    supabase.from("jobs").select("*, career_paths(*)").order("created_at", { ascending: false }),
+  // Jobs are never loaded in bulk here: the Jobs and Review queue tabs page them
+  // from the server (docs/stage-1-contracts.md, B). The page only needs counts.
+  const jobCount = () => supabase.from("jobs").select("id", { count: "exact", head: true });
+  const [pendingRes, listedRes, openRes, oldestRes, membersRes, pathsRes, annRes, linksRes] = await Promise.all([
+    jobCount().eq("review_status", "pending"),
+    jobCount().eq("review_status", "approved"),
+    jobCount().eq("review_status", "approved").eq("is_active", true).or(`deadline.is.null,deadline.gte.${lagosToday()}`),
+    supabase.from("jobs").select("created_at").eq("review_status", "pending").order("created_at", { ascending: true }).limit(1),
     supabase.from("profiles").select("*").order("created_at", { ascending: false }),
     supabase.from("career_paths").select("*").order("name"),
     supabase.from("announcements").select("*").order("created_at", { ascending: false }),
@@ -42,9 +57,10 @@ export default async function AdminPage() {
   ]);
 
   // Phase 2 (job finder, communities, moderation, agents). All admin-readable under RLS.
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const [
     sourcesRes, communitiesRes, communityMembersRes, overviewRes,
-    heldThreadsRes, heldRepliesRes, reportsRes, candidatesRes, runsRes, auditRes,
+    heldThreadsRes, heldRepliesRes, reportsRes, candidatesRes, runsRes, auditRes, agentErrorsRes,
   ] = await Promise.all([
     supabase.from("job_sources").select("*").order("created_at", { ascending: false }),
     supabase.from("communities").select("*").order("name"),
@@ -57,13 +73,26 @@ export default async function AdminPage() {
     supabase.from("agent_runs").select("*").order("started_at", { ascending: false }).limit(20),
     supabase.from("admin_audit").select("id, actor_id, action, target_type, target_id, details, created_at")
       .order("created_at", { ascending: false }).limit(50),
+    supabase.from("agent_runs").select("id", { count: "exact", head: true }).eq("status", "error").gte("started_at", dayAgo),
   ]);
 
   // Phase 3.2: member feedback and Apply-link checks. If the tables aren't
   // there yet, those parts of the dashboard are simply hidden.
-  const [feedbackRes, linkHealthRes] = await Promise.all([
-    supabase.from("feedback").select(FEEDBACK_COLS).order("created_at", { ascending: false }).limit(300),
-    supabase.from("link_health").select("job_id, fail_count, last_status, last_http, checked_at"),
+  const feedbackRes = await supabase.from("feedback").select(FEEDBACK_COLS).order("created_at", { ascending: false }).limit(300);
+  const feedbackRows = feedbackRes.error ? [] : ((feedbackRes.data ?? []) as Feedback[]);
+
+  // Only the jobs feedback points at (titles, "Fix it now", broken Apply links), in chunks of 100 ids.
+  const feedbackJobIds = [...new Set(feedbackRows.filter((f) => f.target_type === "job" && f.target_id).map((f) => f.target_id as string))];
+  const chunks: string[][] = [];
+  for (let i = 0; i < feedbackJobIds.length; i += 100) chunks.push(feedbackJobIds.slice(i, i + 100));
+  const [feedbackJobsRes, linkHealthRes] = await Promise.all([
+    Promise.all(chunks.map((ids) => supabase.from("jobs").select(JOB_REF_COLS).in("id", ids))).then((all) => ({
+      data: all.flatMap((r) => (r.data ?? []) as JobRef[]),
+      error: all.find((r) => r.error)?.error ?? null,
+    })),
+    feedbackJobIds.length
+      ? supabase.from("link_health").select("job_id, fail_count, last_status, last_http, checked_at").in("job_id", feedbackJobIds.slice(0, 300))
+      : supabase.from("link_health").select("job_id", { count: "exact", head: true }),
   ]);
 
   const [heldThreads, heldReplies] = await Promise.all([
@@ -92,12 +121,14 @@ export default async function AdminPage() {
 
   // Which sections failed (logged with the error code only — never row data).
   const sections: [string, { error: { code?: string } | null }][] = [
-    ["jobs", jobsRes], ["members", membersRes], ["career paths", pathsRes], ["news & events", annRes],
+    ["jobs", pendingRes], ["members", membersRes], ["career paths", pathsRes], ["news & events", annRes],
     ["members' career paths", linksRes], ["job sources", sourcesRes], ["communities", communitiesRes],
     ["community members", communityMembersRes], ["community counts", overviewRes],
     ["held discussions", heldThreadsRes], ["held replies", heldRepliesRes], ["reports", reportsRes],
     ["career path ideas", candidatesRes], ["assistant runs", runsRes], ["reported discussions", relThreadsRes],
     ["reported replies", relRepliesRes], ["related discussions", extraThreadsRes], ["activity log", auditRes],
+    ["job counts", listedRes], ["open job count", openRes], ["oldest waiting job", oldestRes],
+    ["jobs mentioned in feedback", feedbackJobsRes], ["assistant problems", agentErrorsRes],
   ];
   // A missing Phase 3.2 table just hides its section; any other failure is reported like the rest.
   if (feedbackRes.error && !isMissingTable(feedbackRes.error)) sections.push(["feedback", feedbackRes]);
@@ -110,7 +141,14 @@ export default async function AdminPage() {
 
   const data: AdminData = {
     adminId: user.id,
-    jobs: (jobsRes.data ?? []) as Job[],
+    jobCounts: {
+      pending: pendingRes.count ?? 0,
+      listed: listedRes.count ?? 0,
+      open: openRes.count ?? 0,
+      oldestPendingAt: ((oldestRes.data ?? []) as { created_at: string }[])[0]?.created_at ?? null,
+    },
+    feedbackJobs: feedbackJobsRes.data,
+    assistantErrors24h: agentErrorsRes.error ? null : (agentErrorsRes.count ?? 0),
     members: (membersRes.data ?? []) as Profile[],
     careerPaths: (pathsRes.data ?? []) as CareerPath[],
     announcements: (annRes.data ?? []) as Announcement[],
@@ -128,7 +166,7 @@ export default async function AdminPage() {
     agentRuns: (runsRes.data ?? []) as AgentRun[],
     audit: (auditRes.data ?? []) as AdminAuditEntry[],
     feedback: feedbackRes.error ? null : ((feedbackRes.data ?? []) as Feedback[]),
-    linkHealth: linkHealthRes.error ? null : ((linkHealthRes.data ?? []) as LinkHealth[]),
+    linkHealth: linkHealthRes.error ? null : (feedbackJobIds.length ? ((linkHealthRes.data ?? []) as LinkHealth[]) : []),
   };
 
   return (
@@ -139,6 +177,7 @@ export default async function AdminPage() {
           <span className="eyebrow">Admin</span>
           <h1 className="title-lg">Club dashboard</h1>
           <p className="lede">Post and review jobs, see who has registered, look after communities and share news.</p>
+          <p className="small" style={{ marginTop: 8 }}><a href="/admin/security" className="btn-link">Two-step sign-in settings</a></p>
         </div>
         {loadError && (
           <div className="alert alert-error" role="alert" style={{ marginBottom: 16 }}>

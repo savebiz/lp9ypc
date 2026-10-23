@@ -73,8 +73,18 @@ export default function JobEditor({ job, careerPaths, adminId, approveOnSave = f
       experience_level: form.experience_level || null,
       ...(approveOnSave ? { review_status: "approved" as const, is_active: true } : {}),
     };
+    // Review queue: also record when it was decided (migration 7). Retry without it if that column isn't there yet.
+    const update = async () => {
+      if (!job) return null;
+      if (approveOnSave) {
+        const res = await supabase.from("jobs").update({ ...payload, reviewed_at: new Date().toISOString(), reject_reason: null }).eq("id", job.id).select("id");
+        const missing = res.error && (res.error.code === "42703" || res.error.code === "PGRST204");
+        if (!missing) return writeProblem("save the job", res);
+      }
+      return writeProblem("save the job", await supabase.from("jobs").update(payload).eq("id", job.id).select("id"));
+    };
     const problem = job
-      ? writeProblem("save the job", await supabase.from("jobs").update(payload).eq("id", job.id).select("id"))
+      ? await update()
       : await supabase.from("jobs").insert({ ...payload, posted_by: adminId || null }).then(({ error }) => (error ? friendlyDbError("post the job", error) : null));
     setSaving(false);
     if (problem) return onError(problem);

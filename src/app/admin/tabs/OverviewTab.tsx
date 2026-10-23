@@ -1,14 +1,19 @@
 "use client";
 
 import { ChevronRight } from "lucide-react";
-import { firstName, isExpired } from "@/lib/utils";
-import type { AdminAuditEntry, CareerPath, Job, JobSource, Profile } from "@/types";
+import { firstName } from "@/lib/utils";
+import type { AdminAuditEntry, CareerPath, JobSource, Profile } from "@/types";
 import type { Tab } from "../AdminClient";
-import { Stat, formatDateTime } from "./shared";
+import { Stat, formatDateTime, type JobRef } from "./shared";
+import { REJECT_REASON_LABELS, ageLabel } from "./jobQueries";
 import styles from "../admin.module.css";
 
 export interface OverviewQueues {
   pendingJobs: number;
+  /** created_at of the oldest waiting job */
+  oldestPendingAt: string | null;
+  /** Assistant runs that ended in an error in the last 24 hours; null = couldn't count (line hidden). */
+  assistantErrors24h: number | null;
   heldPosts: number;
   openReports: number;
   careerIdeas: number;
@@ -20,14 +25,15 @@ export interface OverviewQueues {
 
 /** A live job whose Apply link has 2 or more open "link" reports (Phase 3.2). */
 export interface BrokenLinkJob {
-  job: Job;
+  job: JobRef;
   reports: number;
   /** Failed checks in a row from the link checker, when known. */
   failCount: number | null;
 }
 
-export default function OverviewTab({ jobs, members, careerPaths, memberPaths, queues, audit, jobSources, brokenLinks = [], onGoTo, onFixJob }: {
-  jobs: Job[];
+export default function OverviewTab({ openJobs, members, careerPaths, memberPaths, queues, audit, jobSources, brokenLinks = [], onGoTo, onFixJob }: {
+  /** Approved, live jobs whose deadline hasn't passed (counted on the server). */
+  openJobs: number;
   members: Profile[];
   careerPaths: CareerPath[];
   memberPaths: { member_id: string; career_path_id: string }[];
@@ -41,7 +47,6 @@ export default function OverviewTab({ jobs, members, careerPaths, memberPaths, q
 }) {
   const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const newThisWeek = members.filter((m) => new Date(m.created_at).getTime() > weekAgo).length;
-  const activeJobs = jobs.filter((j) => j.is_active && j.review_status !== "pending" && j.review_status !== "rejected" && !isExpired(j.deadline)).length;
   const optedIn = members.filter((m) => m.consent_updates).length;
 
   const counts = careerPaths
@@ -52,14 +57,21 @@ export default function OverviewTab({ jobs, members, careerPaths, memberPaths, q
   const noPath = members.filter((m) => !withPath.has(m.id)).length;
 
   // Every queue, with a direct link. Shown even at zero so admins know where things live.
+  const oldest = queues.pendingJobs > 0 ? ageLabel(queues.oldestPendingAt) : "";
   const queueLinks: { n: number; label: string; tab: Tab; none: string }[] = [
-    { n: queues.pendingJobs, label: "Jobs waiting for review", tab: "review", none: "No jobs waiting" },
+    {
+      n: queues.pendingJobs, tab: "review", none: "No jobs waiting",
+      label: `Jobs waiting for review${oldest ? ` · oldest ${oldest === "today" ? "found today" : `waiting ${oldest}`}` : ""}`,
+    },
     { n: queues.heldPosts, label: "Posts needing review", tab: "moderation", none: "No posts waiting" },
     { n: queues.openReports, label: "Open reports from members", tab: "moderation", none: "No open reports" },
     { n: queues.careerIdeas, label: "Career path ideas to review", tab: "ideas", none: "No new ideas" },
     { n: queues.sourceProblems, label: "Job sources with a problem", tab: "sources", none: "All job sources fine" },
     ...(queues.newFeedback !== null
       ? [{ n: queues.newFeedback, label: "New feedback from members", tab: "feedback" as Tab, none: "No new feedback" }]
+      : []),
+    ...(queues.assistantErrors24h !== null
+      ? [{ n: queues.assistantErrors24h, label: "Assistant problems in the last 24 hours", tab: "agents" as Tab, none: "No assistant problems in the last 24 hours" }]
       : []),
     ...(queues.testAccounts > 0
       ? [{ n: queues.testAccounts, label: "Test accounts to delete before launch", tab: "members" as Tab, none: "" }]
@@ -72,7 +84,7 @@ export default function OverviewTab({ jobs, members, careerPaths, memberPaths, q
       <div className="stats">
         <Stat n={members.length} label="Registered members" />
         <Stat n={newThisWeek} label="Joined in the last 7 days" />
-        <Stat n={activeJobs} label="Open jobs" />
+        <Stat n={openJobs} label="Open jobs" />
         <Stat n={optedIn} label="Opted in to updates" />
       </div>
 
@@ -161,6 +173,16 @@ function describe(e: AdminAuditEntry, memberName: Map<string, string>, sourceNam
       const label: Record<string, string> = { new: "New", looking: "Looking into it", fixed: "Fixed", not_now: "Not now" };
       const s = typeof d.status === "string" ? label[d.status] : undefined;
       return s ? `${who} updated a feedback item (now: ${s})` : `${who} updated a feedback item`;
+    }
+    case "jobs.bulk_approve":
+    case "jobs.bulk_reject":
+    case "jobs.bulk_restore": {
+      const n = typeof d.count === "number" ? d.count : 0;
+      const what = `${n} job${n === 1 ? "" : "s"}`;
+      if (e.action === "jobs.bulk_approve") return `${who} approved ${what} from the review queue`;
+      if (e.action === "jobs.bulk_restore") return `${who} moved ${what} back to the review queue`;
+      const reason = typeof d.reason === "string" ? REJECT_REASON_LABELS[d.reason as keyof typeof REJECT_REASON_LABELS] : undefined;
+      return `${who} rejected ${what}${reason ? ` (${reason})` : ""}`;
     }
     default:
       return `${who}: ${e.action.replace(/[._]/g, " ")}`;

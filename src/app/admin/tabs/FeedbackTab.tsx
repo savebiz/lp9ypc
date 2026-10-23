@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Bot, Loader2, Wrench } from "lucide-react";
-import type { Announcement, CareerPath, Community, Feedback, FeedbackKind, FeedbackStatus, Job, Profile } from "@/types";
-import { formatDateTime, patchJson, type TabActions } from "./shared";
+import type { Announcement, CareerPath, Community, Feedback, FeedbackKind, FeedbackStatus, Profile } from "@/types";
+import { formatDateTime, patchJson, type JobRef, type TabActions } from "./shared";
 import styles from "../admin.module.css";
 
 /** Wording from docs/phase-3-contracts.md (Phase 3.2 addendum). Use exactly. */
@@ -53,7 +53,8 @@ export default function FeedbackTab({
   feedback, jobs, editableJobIds, announcements, careerPaths, communities, members, onFixIt, onError, onSuccess, onChanged,
 }: TabActions & {
   feedback: Feedback[];
-  jobs: Job[];
+  /** The jobs feedback points at (the page loads only these). */
+  jobs: JobRef[];
   /** Jobs that open in the Jobs editor (approved ones; pending jobs live in the Review queue). */
   editableJobIds: Set<string>;
   announcements: Announcement[];

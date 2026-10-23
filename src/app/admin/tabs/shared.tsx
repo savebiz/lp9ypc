@@ -9,7 +9,12 @@ import type {
 /** Everything the admin page loads (admin-readable under RLS). Phase 2 lists may be empty. */
 export interface AdminData {
   adminId: string;
-  jobs: Job[];
+  /** Job counts (count/head queries). The lists themselves are paged in the Jobs and Review queue tabs. */
+  jobCounts: JobCounts;
+  /** Jobs that feedback items point at (titles, "Fix it now", broken-link alerts). */
+  feedbackJobs: JobRef[];
+  /** agent_runs with status 'error' in the last 24 hours; null if it couldn't be counted. */
+  assistantErrors24h: number | null;
   members: Profile[];
   careerPaths: CareerPath[];
   announcements: Announcement[];
@@ -34,6 +39,20 @@ export interface AdminData {
   /** Apply-link check results (Phase 3.2). null = not set up yet. */
   linkHealth: LinkHealth[] | null;
 }
+
+export interface JobCounts {
+  /** review_status 'pending' */
+  pending: number;
+  /** review_status 'approved' (live and archived) — the Jobs tab */
+  listed: number;
+  /** approved, active and deadline not passed */
+  open: number;
+  /** created_at of the oldest pending job */
+  oldestPendingAt: string | null;
+}
+
+/** The few job fields the Overview and Feedback tabs need. */
+export type JobRef = Pick<Job, "id" | "title" | "company" | "is_active" | "review_status">;
 
 /** Props every tab gets for feedback and refreshing server data. */
 export interface TabActions {
