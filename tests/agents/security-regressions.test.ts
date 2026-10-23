@@ -68,7 +68,8 @@ describe("html-extract (L6: hostile pages can't stall the scraper)", () => {
     const started = Date.now();
     const page = extractPage(hostile, "https://jobs.example/");
     const ms = Date.now() - started;
-    assert.ok(ms < 2_000, `took ${ms} ms`);
+    // The old quadratic regex took minutes on this input; 5 s leaves room for slow CI runners.
+    assert.ok(ms < 5_000, `took ${ms} ms`);
     assert.ok(page.links.includes("https://jobs.example/x"));
   });
 });

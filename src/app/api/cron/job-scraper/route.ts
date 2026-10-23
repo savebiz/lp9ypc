@@ -4,10 +4,14 @@
  *
  * Structured job data (JSON-LD / RSS) is read first without AI; Gemini is
  * only a fallback. Runs at most 3 active sources (least recently run first), in parallel
- * within one 55 s budget. Found jobs land as review_status 'pending'.
- * Writes one agent_runs row.
+ * within one 55 s budget. Found jobs land as review_status 'pending' with a
+ * relevance score; jobs not open to Nigeria are set aside ('not_eligible');
+ * a source with 30 jobs waiting adds no more (docs/stage-1-contracts.md A).
+ * First, auto-expiry: pending jobs older than 14 days or past their closing
+ * date → rejected / 'expired'. Writes one agent_runs row.
  */
 import { MAX_SOURCES_PER_RUN, loadCatalogue, runJobSource } from "@/lib/agents/job-scraper";
+import { expireStalePendingJobs, loadMembersPerPath } from "@/lib/agents/job-relevance";
 import { finishAgentRun, startAgentRun } from "@/lib/agents/agent-run";
 import { addUsage, emptyUsage } from "@/lib/agents/gemini-parse";
 import { checkCron, fail, json, requireServiceRole } from "@/app/api/_lib/http";
@@ -26,6 +30,11 @@ export async function GET(req: Request) {
 
   const runId = await startAgentRun("job_scraper", { trigger: "cron" }, admin);
 
+  // Auto-expiry first, so the per-source cap counts only jobs still worth reviewing.
+  // A failure here is logged but doesn't stop the job finder.
+  const expiry = await expireStalePendingJobs(admin, started);
+  const expiryDetails = { expired: expiry.expired, expiry_ok: expiry.ok, ...(expiry.columnsMissing ? { review_columns_missing: true } : {}) };
+
   // No Gemini key is fine: sources with structured job data (JSON-LD / RSS)
   // are read without AI; the others report it in their last_error.
   const { data, error } = await admin
@@ -37,18 +46,19 @@ export async function GET(req: Request) {
   const catalogue = error ? null : await loadCatalogue(admin);
   if (error || !catalogue) {
     const message = error ? "Could not load job sources." : "Could not load career paths.";
-    await finishAgentRun("job_scraper", runId, { status: "error", error: message, details: { trigger: "cron" } }, admin);
+    await finishAgentRun("job_scraper", runId, { status: "error", error: message, details: { trigger: "cron", ...expiryDetails } }, admin);
     return fail(500, message);
   }
 
   const sources = (data ?? []) as { id: string; name: string; url: string }[];
   if (sources.length === 0) {
-    await finishAgentRun("job_scraper", runId, { status: "ok", details: { trigger: "cron", sources: [] } }, admin);
-    return json({ ok: true, status: "ok", sources: 0, found: 0, inserted: 0, message: "No active job sources." });
+    await finishAgentRun("job_scraper", runId, { status: "ok", details: { trigger: "cron", sources: [], ...expiryDetails } }, admin);
+    return json({ ok: true, status: "ok", sources: 0, found: 0, inserted: 0, expired: expiry.expired, message: "No active job sources." });
   }
 
   const deadline = started + 55_000;
-  const results = await Promise.all(sources.map((s) => runJobSource(admin, s, { deadline, catalogue })));
+  const membersPerPath = await loadMembersPerPath(admin);
+  const results = await Promise.all(sources.map((s) => runJobSource(admin, s, { deadline, catalogue, membersPerPath })));
 
   const usage = results.reduce((acc, r) => addUsage(acc, r.usage), emptyUsage());
   const found = results.reduce((n, r) => n + r.found, 0);
@@ -70,7 +80,7 @@ export async function GET(req: Request) {
       itemsProcessed: inserted,
       usage,
       error: allFailed ? results.map((r) => r.message).join(" | ") : null,
-      details: { trigger: "cron", sources: summary },
+      details: { trigger: "cron", ...expiryDetails, sources: summary },
     },
     admin,
   );
@@ -81,6 +91,7 @@ export async function GET(req: Request) {
     sources: sources.length,
     found,
     inserted,
+    expired: expiry.expired,
     results: sources.map((s, i) => ({ id: s.id, status: results[i].status, found: results[i].found, inserted: results[i].inserted })),
   });
 }

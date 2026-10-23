@@ -52,7 +52,13 @@ export interface Job {
   review_status?: ReviewStatus;
   // Migration 4: the Apply link is a referral link (members see a small note)
   is_referral?: boolean;
+  // Migration 7: review queue
+  relevance?: number | null;
+  reject_reason?: JobRejectReason | null;
+  reviewed_at?: string | null;
 }
+
+export type JobRejectReason = "expired" | "not_eligible" | "duplicate" | "irrelevant" | "broken_link" | "other";
 
 export interface SavedJob {
   id: string;

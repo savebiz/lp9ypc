@@ -5,8 +5,10 @@
  *   JobPosting JSON-LD, or an RSS/Atom feed; no AI, no cost)
  *   → only if none: Gemini reads ~12k chars of the page's main content
  *   → code re-validation (Apply link must be on the page / same-site posting
- *     URL, enums, lengths, past deadlines dropped) → dedupe → insert with
- *     review_status 'pending'.
+ *     URL, enums, lengths, past deadlines dropped) → dedupe → relevance score
+ *     (job-relevance.ts) → insert with review_status 'pending', or set aside
+ *     as 'rejected' / 'not_eligible' when not open to applicants in Nigeria.
+ *     A source with 30 jobs already waiting adds no more (Stage 1 cap).
  *
  * Agents only PROPOSE: nothing here is visible to members until an admin
  * approves it. Fails closed: on any error nothing is written except the
@@ -29,6 +31,14 @@ import { checkRobots } from "./robots.ts";
 import { extractMainContent, extractPage, extractPlainText } from "./html-extract.ts";
 import { buildJobSchema, lagosToday, validateExtractedJobs, type JobValidationResult, type ValidJob } from "./job-validate.ts";
 import { FEED_CONTENT_TYPES, extractStructuredJobs, looksLikeFeed } from "./structured-jobs.ts";
+import {
+  PENDING_CAP_PER_SOURCE,
+  countPendingForSource,
+  isMissingColumn,
+  loadMembersPerPath,
+  scoreJob,
+  withoutReviewFields,
+} from "./job-relevance.ts";
 
 export const MAX_SOURCES_PER_RUN = 3;
 const EXTRACTION_TIMEOUT_MS = 45_000;
@@ -171,59 +181,150 @@ export function structuredJobsFromDocument(doc: FetchedDocument, slugs: string[]
   return { method: "structured", format: structured.format, isFeed, validated, pageLinks, details };
 }
 
+export interface InsertOutcome {
+  /** New jobs added to the review queue (pending). */
+  inserted: number;
+  /** New jobs set aside as rejected / 'not_eligible' (not open to applicants in Nigeria). */
+  notEligible: number;
+  /** New eligible jobs NOT added because the source already had PENDING_CAP_PER_SOURCE waiting. */
+  capped: number;
+  /** The source's pending jobs before this insert (null when there was nothing eligible to add). */
+  pendingBefore: number | null;
+  /** The Stage 1 migration isn't applied: rows went in without relevance / reject_reason / reviewed_at. */
+  columnsMissing: boolean;
+  failed: boolean;
+}
+
+export interface ScoringOptions {
+  membersPerPath: Record<string, number>;
+  /** Today's date in Lagos, YYYY-MM-DD. */
+  today: string;
+}
+
+/** Inserts rows; retries without the review fields when the migration isn't applied, and one by one on a duplicate race. */
+async function insertRows(
+  admin: SupabaseClient,
+  rows: Record<string, unknown>[],
+): Promise<{ inserted: Set<number>; failed: boolean; columnsMissing: boolean }> {
+  const inserted = new Set<number>();
+  let columnsMissing = false;
+  if (rows.length === 0) return { inserted, failed: false, columnsMissing };
+  let body: Record<string, unknown>[] = rows;
+  let { error } = await admin.from("jobs").insert(body);
+  if (error && isMissingColumn(error)) {
+    columnsMissing = true;
+    body = rows.map((r) => withoutReviewFields(r));
+    ({ error } = await admin.from("jobs").insert(body));
+  }
+  if (!error) {
+    rows.forEach((_, i) => inserted.add(i));
+    return { inserted, failed: false, columnsMissing };
+  }
+  if (error.code !== "23505") {
+    console.error(`[job-scraper] insert failed (${error.code ?? "unknown"})`);
+    return { inserted, failed: true, columnsMissing };
+  }
+  // Another run inserted one of these meanwhile: insert one by one, skipping duplicates.
+  for (let i = 0; i < body.length; i++) {
+    const { error: rowError } = await admin.from("jobs").insert(body[i]);
+    if (!rowError) inserted.add(i);
+    else if (rowError.code !== "23505") console.error(`[job-scraper] insert failed (${rowError.code ?? "unknown"})`);
+  }
+  return { inserted, failed: false, columnsMissing };
+}
+
 async function insertJobs(
   admin: SupabaseClient,
   jobs: ValidJob[],
   sourceId: string,
   pageUrl: string,
   slugToId: Map<string, string>,
-): Promise<{ inserted: number; failed: boolean }> {
+  scoring: ScoringOptions,
+): Promise<InsertOutcome> {
+  const none: InsertOutcome = { inserted: 0, notEligible: 0, capped: 0, pendingBefore: null, columnsMissing: false, failed: false };
   const keys = jobs.map((j) => j.dedupe_key);
   const { data: existing, error: existingError } = await admin.from("jobs").select("dedupe_key").in("dedupe_key", keys);
   if (existingError) {
     console.error(`[job-scraper] duplicate check failed (${existingError.code ?? "unknown"})`);
-    return { inserted: 0, failed: true };
+    return { ...none, failed: true };
   }
   const have = new Set((existing ?? []).map((r: { dedupe_key: string | null }) => r.dedupe_key));
 
-  const rows = jobs
+  const nowIso = new Date().toISOString();
+  const scored = jobs
     .filter((j) => !have.has(j.dedupe_key))
-    .map((j) => ({
-      title: j.title,
-      company: j.company,
-      location: j.location,
-      work_mode: j.work_mode,
-      engagement_type: j.engagement_type,
-      experience_level: j.experience_level,
-      deadline: j.deadline,
-      description: j.description,
-      application_link: j.application_link,
-      salary_range: j.salary_range,
-      career_path_id: j.career_path_slug ? slugToId.get(j.career_path_slug) ?? null : null,
-      is_active: true,
-      review_status: "pending",
-      posted_by: null,
-      source_id: sourceId,
-      source_page_url: pageUrl.slice(0, 2000),
-      dedupe_key: j.dedupe_key,
-    }));
-  if (rows.length === 0) return { inserted: 0, failed: false };
+    .map((j) => {
+      const career_path_id = j.career_path_slug ? slugToId.get(j.career_path_slug) ?? null : null;
+      const result = scoreJob({ ...j, career_path_id }, { membersPerPath: scoring.membersPerPath, today: scoring.today });
+      const row: Record<string, unknown> = {
+        title: j.title,
+        company: j.company,
+        location: j.location,
+        work_mode: j.work_mode,
+        engagement_type: j.engagement_type,
+        experience_level: j.experience_level,
+        deadline: j.deadline,
+        description: j.description,
+        application_link: j.application_link,
+        salary_range: j.salary_range,
+        career_path_id,
+        is_active: result.eligible,
+        review_status: result.eligible ? "pending" : "rejected",
+        posted_by: null,
+        source_id: sourceId,
+        source_page_url: pageUrl.slice(0, 2000),
+        dedupe_key: j.dedupe_key,
+        relevance: result.score,
+      };
+      // Not open to applicants in Nigeria: set aside, never shown to admins as pending.
+      if (!result.eligible) Object.assign(row, { reject_reason: "not_eligible", reviewed_at: nowIso });
+      return { row, eligible: result.eligible, score: result.score };
+    });
+  if (scored.length === 0) return none;
 
-  const { error } = await admin.from("jobs").insert(rows);
-  if (!error) return { inserted: rows.length, failed: false };
-  if (error.code !== "23505") {
-    console.error(`[job-scraper] insert failed (${error.code ?? "unknown"})`);
-    return { inserted: 0, failed: true };
+  // Per-source cap: a source with PENDING_CAP_PER_SOURCE jobs already waiting adds no more;
+  // below the cap it adds at most the room left, best scores first. Skipped jobs aren't
+  // saved, so a later run finds them again once the queue has room.
+  const eligible = scored.filter((s) => s.eligible).sort((a, b) => b.score - a.score);
+  const rejected = scored.filter((s) => !s.eligible);
+  let pendingBefore: number | null = null;
+  let keep = eligible;
+  if (eligible.length > 0) {
+    pendingBefore = await countPendingForSource(admin, sourceId);
+    if (pendingBefore === null) return { ...none, failed: true };
+    keep = eligible.slice(0, Math.max(0, PENDING_CAP_PER_SOURCE - pendingBefore));
   }
+  const capped = eligible.length - keep.length;
 
-  // Another run inserted one of these meanwhile: insert one by one, skipping duplicates.
+  const rows = [...keep.map((s) => s.row), ...rejected.map((s) => s.row)];
+  const saved = await insertRows(admin, rows);
+  if (saved.failed) return { ...none, pendingBefore, columnsMissing: saved.columnsMissing, failed: true };
   let inserted = 0;
-  for (const row of rows) {
-    const { error: rowError } = await admin.from("jobs").insert(row);
-    if (!rowError) inserted++;
-    else if (rowError.code !== "23505") console.error(`[job-scraper] insert failed (${rowError.code ?? "unknown"})`);
+  let notEligible = 0;
+  rows.forEach((r, i) => {
+    if (!saved.inserted.has(i)) return;
+    if (r.review_status === "pending") inserted++;
+    else notEligible++;
+  });
+  return { inserted, notEligible, capped, pendingBefore, columnsMissing: saved.columnsMissing, failed: false };
+}
+
+/** The admin-facing sentence for a run that found jobs. Pure. */
+export function foundMessage(found: number, o: Pick<InsertOutcome, "inserted" | "notEligible" | "capped">): string {
+  const jobs = `${found} job${found === 1 ? "" : "s"}`;
+  let text =
+    o.inserted > 0
+      ? `Found ${jobs}; ${o.inserted} new added to the review queue.`
+      : o.notEligible === 0 && o.capped === 0
+        ? `Found ${jobs}, all already in the system.`
+        : `Found ${jobs}; none added to the review queue.`;
+  if (o.notEligible > 0) {
+    text += ` ${o.notEligible} not open to applicants in Nigeria ${o.notEligible === 1 ? "was" : "were"} set aside.`;
   }
-  return { inserted, failed: false };
+  if (o.capped > 0) {
+    text += ` ${o.capped} more will be added once this source has fewer than ${PENDING_CAP_PER_SOURCE} jobs waiting for review.`;
+  }
+  return text;
 }
 
 async function saveValidated(
@@ -235,29 +336,31 @@ async function saveValidated(
   details: Record<string, unknown>,
   usage: GeminiUsage,
   dryRun = false,
+  scoring: ScoringOptions = { membersPerPath: {}, today: lagosToday() },
 ): Promise<JobSourceRunResult> {
   const found = validated.jobs.length;
   if (found === 0) return emptyResult(details, usage);
   if (dryRun) {
-    details.dry_run_jobs = validated.jobs.slice(0, 5).map((j) => ({ title: j.title, company: j.company, link: j.application_link }));
+    const slugToId = new Map(catalogue.map((c) => [c.slug, c.id] as [string, string]));
+    const scores = validated.jobs.map((j) =>
+      scoreJob({ ...j, career_path_id: j.career_path_slug ? slugToId.get(j.career_path_slug) ?? null : null }, scoring),
+    );
+    details.dry_run_not_eligible = scores.filter((r) => !r.eligible).length;
+    details.dry_run_jobs = validated.jobs
+      .slice(0, 5)
+      .map((j, i) => ({ title: j.title, company: j.company, link: j.application_link, relevance: scores[i].score, eligible: scores[i].eligible }));
     return { status: "ok", found, inserted: 0, message: `Dry run: found ${found} job${found === 1 ? "" : "s"}; nothing saved.`, usage, details };
   }
 
   const slugToId = new Map(catalogue.map((c) => [c.slug, c.id] as [string, string]));
-  const saved = await insertJobs(admin, validated.jobs, source.id, pageUrl, slugToId);
+  const saved = await insertJobs(admin, validated.jobs, source.id, pageUrl, slugToId, scoring);
+  details.not_eligible = saved.notEligible;
+  details.capped = saved.capped;
+  details.pending_before = saved.pendingBefore;
+  if (saved.columnsMissing) details.review_columns_missing = true;
   if (saved.failed) return fail(JOB_SOURCE_MESSAGES.saveFailed, details, usage);
 
-  return {
-    status: "ok",
-    found,
-    inserted: saved.inserted,
-    message:
-      saved.inserted > 0
-        ? `Found ${found} job${found === 1 ? "" : "s"}; ${saved.inserted} new added to the review queue.`
-        : `Found ${found} job${found === 1 ? "" : "s"}, all already in the system.`,
-    usage,
-    details,
-  };
+  return { status: "ok", found, inserted: saved.inserted, message: foundMessage(found, saved), usage, details };
 }
 
 async function scrape(
@@ -268,6 +371,7 @@ async function scrape(
   deps: SafeFetchDeps,
   provider: LlmProvider = "gemini",
   dryRun = false,
+  membersPerPathIn?: Record<string, number>,
 ): Promise<JobSourceRunResult> {
   const remaining = () => deadline - Date.now();
 
@@ -312,6 +416,7 @@ async function scrape(
   }
 
   const today = lagosToday();
+  const scoring: ScoringOptions = { membersPerPath: membersPerPathIn ?? (await loadMembersPerPath(admin)), today };
   const doc: FetchedDocument = { body: page.body, contentType: page.contentType, finalUrl: page.finalUrl };
 
   // 1. Structured data first: free, fast, no AI.
@@ -323,7 +428,7 @@ async function scrape(
     ...structured.details,
   };
   if (structured.method === "structured" && structured.validated) {
-    return saveValidated(admin, structured.validated, source, page.finalUrl, catalogue, details, emptyUsage(), dryRun);
+    return saveValidated(admin, structured.validated, source, page.finalUrl, catalogue, details, emptyUsage(), dryRun, scoring);
   }
   // A feed (or an XML document) with no usable items: nothing for the AI to add.
   if (structured.isFeed || page.contentType === "application/xml" || page.contentType === "text/xml") {
@@ -375,7 +480,7 @@ async function scrape(
     today,
   });
   details.dropped = validated.dropped;
-  return saveValidated(admin, validated, source, page.finalUrl, catalogue, details, ai.usage, dryRun);
+  return saveValidated(admin, validated, source, page.finalUrl, catalogue, details, ai.usage, dryRun, scoring);
 }
 
 /**
@@ -388,7 +493,15 @@ async function scrape(
 export async function runJobSource(
   admin: SupabaseClient,
   source: Pick<JobSource, "id" | "name" | "url">,
-  opts: { deadline?: number; catalogue?: CareerPathRow[]; fetchDeps?: SafeFetchDeps; provider?: LlmProvider; dryRun?: boolean } = {},
+  opts: {
+    deadline?: number;
+    catalogue?: CareerPathRow[];
+    /** Members following each career path (the cron loads it once per run; loaded here when absent). */
+    membersPerPath?: Record<string, number>;
+    fetchDeps?: SafeFetchDeps;
+    provider?: LlmProvider;
+    dryRun?: boolean;
+  } = {},
 ): Promise<JobSourceRunResult> {
   let result: JobSourceRunResult;
   // Mark the attempt first: if this run is cut off, the source still moves to
@@ -409,6 +522,7 @@ export async function runJobSource(
       opts.fetchDeps ?? defaultFetchDeps,
       opts.provider ?? "gemini",
       dryRun,
+      opts.membersPerPath,
     );
   } catch {
     result = fail(JOB_SOURCE_MESSAGES.unexpected);

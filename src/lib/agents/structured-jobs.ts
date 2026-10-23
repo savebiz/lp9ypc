@@ -20,6 +20,7 @@
  */
 import { decodeEntities } from "./html-extract.ts";
 import { normalizeLink } from "./link-validate.ts";
+import { locationFromDescription } from "./job-relevance.ts";
 
 export const MAX_STRUCTURED_JOBS = 100;
 const MAX_LD_BLOCKS = 50;
@@ -563,9 +564,12 @@ function fromFeed(xml: string, pageUrl: string, opts: StructuredOptions): Struct
 
     const companyField = tagText(item, "company|company_name|companyName|hiringOrganization|employer");
     const split = companyField ? { title: rawTitle, company: companyField } : splitFeedTitle(rawTitle);
-    const description = shortDescription(tagText(item, "description|summary|content|encoded"));
+    const fullDescription = tagText(item, "description|summary|content|encoded");
+    const description = shortDescription(fullDescription);
     const category = tagText(item, "category");
-    const location = tagText(item, "location|job_location|region|city");
+    // Nigerian boards (e.g. Hot Nigerian Jobs) have no location tag but say
+    // "The position is located in Yaba, Lagos State." in the description.
+    const location = tagText(item, "location|job_location|region|city") ?? locationFromDescription(fullDescription);
     const jobType = tagText(item, "job_type|jobType|type|employment_type");
 
     extraLinks.add(link);
