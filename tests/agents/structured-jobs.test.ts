@@ -21,7 +21,7 @@ const fixture = (name: string) => readFileSync(join(here, "fixtures", name), "ut
 
 const SLUGS = [
   "tech-product", "finance-accounting", "media-communications", "law-compliance", "engineering-pm",
-  "business-entrepreneurship", "public-sector", "human-resources", "health-wellness", "creative-industries",
+  "business-entrepreneurship", "public-sector", "human-resources", "health-wellness", "creative-industries", "education-research",
 ];
 const TODAY = "2026-10-10";
 

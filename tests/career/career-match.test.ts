@@ -115,3 +115,9 @@ test("multi-field professions keep the stronger and earlier fields first", () =>
   assert.deepEqual(suggestPathSlugs("Medical sales representative"), ["health-wellness", "business-entrepreneurship"]);
   assert.ok(suggestPathSlugs("UI/UX designer").includes("creative-industries"));
 });
+
+test("education: teachers, lecturers and researchers map to Education & Research", () => {
+  for (const p of ["Teacher", "Secondary school teacher", "Lecturer", "University lecturer", "Researcher", "PhD student", "Tutor"]) {
+    assert.equal(suggestPathSlugs(p)[0], "education-research", p);
+  }
+});
