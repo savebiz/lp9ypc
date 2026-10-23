@@ -1,76 +1,202 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { Loader2, Search, SlidersHorizontal, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import JobCard from "@/components/jobs/JobCard";
+import type { JobCardJob } from "@/components/jobs/card-data";
 import { PathIcon } from "@/components/ui/icons";
 import { ENGAGEMENT_LABELS, LEVEL_LABELS, WORK_MODE_LABELS, shortPathName } from "@/lib/utils";
-import type { CareerPath, Job } from "@/types";
+import type { CareerPath } from "@/types";
+import { JOBS_PAGE_SIZE, fetchJobsPage, type JobFilters, type JobsPageResult } from "./jobs-query";
+import styles from "./jobs.module.css";
+
+export type PathOption = Pick<CareerPath, "id" | "name" | "slug">;
 
 interface Props {
+  /** First 20 jobs, already filtered by ?q= and ?path= on the server. */
+  initialPage: JobsPageResult;
   /** Search text from the home page's "Find your next role" box (?q=). */
   initialQuery?: string;
-  initialJobs: Job[];
-  careerPaths: CareerPath[];
+  careerPaths: PathOption[];
+  /** Every location among live jobs, for the Location filter. */
+  locations: string[];
   userId: string | null;
   initialSavedIds: string[];
   initialPath: string | null;
 }
 
 const ALL = "all";
+const SEARCH_DELAY_MS = 350;
 
-export default function JobsClient({ initialJobs, careerPaths, userId, initialSavedIds, initialPath, initialQuery = "" }: Props) {
+interface UiFilters {
+  q: string;
+  paths: string[]; // slugs
+  workMode: string;
+  type: string;
+  level: string;
+  location: string;
+}
+
+export default function JobsClient({
+  initialPage,
+  careerPaths,
+  locations,
+  userId,
+  initialSavedIds,
+  initialPath,
+  initialQuery = "",
+}: Props) {
   const router = useRouter();
   const validInitialPath = careerPaths.some((c) => c.slug === initialPath) ? [initialPath as string] : [];
 
-  const [q, setQ] = useState(initialQuery);
-  const [paths, setPaths] = useState<string[]>(validInitialPath);
-  const [workMode, setWorkMode] = useState(ALL);
-  const [type, setType] = useState(ALL);
-  const [level, setLevel] = useState(ALL);
-  const [location, setLocation] = useState(ALL);
+  const [filters, setFilters] = useState<UiFilters>({
+    q: initialQuery,
+    paths: validInitialPath,
+    workMode: ALL,
+    type: ALL,
+    level: ALL,
+    location: ALL,
+  });
+  const { q, paths, workMode, type, level, location } = filters;
+
+  const [jobs, setJobs] = useState<JobCardJob[]>(initialPage.jobs);
+  const [total, setTotal] = useState(initialPage.total);
+  const [hasMore, setHasMore] = useState(initialPage.hasMore);
+  /** "loading" = new filters being fetched; "more" = next page being fetched. */
+  const [status, setStatus] = useState<"idle" | "loading" | "more">("idle");
+  const [loadError, setLoadError] = useState(initialPage.error);
+  const [moreError, setMoreError] = useState(false);
+  const [announcement, setAnnouncement] = useState("");
+
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set(initialSavedIds));
   const [toast, setToast] = useState("");
 
-  const locations = useMemo(
-    () => [...new Set(initialJobs.map((j) => j.location?.trim()).filter((l): l is string => !!l))].sort(),
-    [initialJobs],
+  const loadedKey = useRef(keyOf(filters));
+  const requestRef = useRef<AbortController | null>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const focusJobId = useRef<string | null>(null);
+
+  // Stop any pending search or request if the member leaves the page.
+  useEffect(
+    () => () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+      requestRef.current?.abort();
+    },
+    [],
   );
 
-  const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    return initialJobs.filter((j) => {
-      if (paths.length && !(j.career_paths && paths.includes(j.career_paths.slug))) return false;
-      if (workMode !== ALL && j.work_mode !== workMode) return false;
-      if (type !== ALL && j.engagement_type !== type) return false;
-      if (level !== ALL && j.experience_level !== level) return false;
-      if (location !== ALL && j.location?.trim() !== location) return false;
-      if (s) {
-        const hay = [j.title, j.company, j.location, j.description].filter(Boolean).join(" ").toLowerCase();
-        if (!hay.includes(s)) return false;
-      }
-      return true;
-    });
-  }, [initialJobs, q, paths, workMode, type, level, location]);
+  // After "Show more", move focus to the first newly loaded job so keyboard
+  // and screen-reader users continue from where the new jobs start.
+  useEffect(() => {
+    const id = focusJobId.current;
+    if (!id) return;
+    focusJobId.current = null;
+    document.getElementById(`job-${id}`)?.querySelector<HTMLElement>("a")?.focus();
+  }, [jobs]);
+
+  function keyOf(f: UiFilters) {
+    return JSON.stringify([f.q.trim().toLowerCase(), [...f.paths].sort(), f.workMode, f.type, f.level, f.location]);
+  }
+
+  function toQuery(f: UiFilters): JobFilters {
+    return {
+      q: f.q,
+      pathIds: careerPaths.filter((c) => f.paths.includes(c.slug)).map((c) => c.id),
+      workMode: f.workMode === ALL ? null : f.workMode,
+      type: f.type === ALL ? null : f.type,
+      level: f.level === ALL ? null : f.level,
+      location: f.location === ALL ? null : f.location,
+    };
+  }
+
+  /** Loads the first page for these filters (cancelling anything in flight). */
+  async function loadFirstPage(f: UiFilters) {
+    requestRef.current?.abort();
+    const key = keyOf(f);
+    if (key === loadedKey.current && !loadError) {
+      setStatus("idle");
+      return;
+    }
+    const ctrl = new AbortController();
+    requestRef.current = ctrl;
+    setStatus("loading");
+    setMoreError(false);
+    setAnnouncement("");
+    const res = await fetchJobsPage(createClient(), toQuery(f), null, 0, ctrl.signal);
+    if (ctrl.signal.aborted) return;
+    requestRef.current = null;
+    setStatus("idle");
+    if (res.error) {
+      setLoadError(true);
+      return;
+    }
+    loadedKey.current = key;
+    setLoadError(false);
+    setJobs(res.jobs);
+    setTotal(res.total);
+    setHasMore(res.hasMore);
+  }
+
+  /** Updates filters; search typing waits briefly so we don't query on every key. */
+  function update(next: Partial<UiFilters>, { debounce = false } = {}) {
+    const f = { ...filters, ...next };
+    setFilters(f);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (debounce) {
+      searchTimer.current = setTimeout(() => void loadFirstPage(f), SEARCH_DELAY_MS);
+    } else {
+      void loadFirstPage(f);
+    }
+  }
+
+  async function showMore() {
+    if (status !== "idle" || !hasMore || jobs.length === 0) return;
+    const key = loadedKey.current;
+    const ctrl = new AbortController();
+    requestRef.current = ctrl;
+    setStatus("more");
+    setMoreError(false);
+    const last = jobs[jobs.length - 1];
+    const res = await fetchJobsPage(createClient(), toQuery(filters), last, jobs.length, ctrl.signal);
+    if (ctrl.signal.aborted || key !== loadedKey.current) return;
+    requestRef.current = null;
+    setStatus("idle");
+    if (res.error) {
+      setMoreError(true);
+      return;
+    }
+    const seen = new Set(jobs.map((j) => j.id));
+    const fresh = res.jobs.filter((j) => !seen.has(j.id));
+    const nextCount = jobs.length + fresh.length;
+    focusJobId.current = fresh[0]?.id ?? null;
+    setJobs([...jobs, ...fresh]);
+    setTotal(Math.max(res.total, nextCount));
+    setHasMore(res.hasMore && fresh.length > 0);
+    setAnnouncement(
+      `${fresh.length} more ${fresh.length === 1 ? "job" : "jobs"} loaded. Showing ${nextCount} of ${Math.max(res.total, nextCount)}.`,
+    );
+  }
 
   const panelFilters = [
-    workMode !== ALL && { key: "mode", label: WORK_MODE_LABELS[workMode], clear: () => setWorkMode(ALL) },
-    type !== ALL && { key: "type", label: ENGAGEMENT_LABELS[type], clear: () => setType(ALL) },
-    level !== ALL && { key: "level", label: LEVEL_LABELS[level], clear: () => setLevel(ALL) },
-    location !== ALL && { key: "loc", label: location, clear: () => setLocation(ALL) },
+    workMode !== ALL && { key: "mode", label: WORK_MODE_LABELS[workMode], clear: () => update({ workMode: ALL }) },
+    type !== ALL && { key: "type", label: ENGAGEMENT_LABELS[type], clear: () => update({ type: ALL }) },
+    level !== ALL && { key: "level", label: LEVEL_LABELS[level], clear: () => update({ level: ALL }) },
+    location !== ALL && { key: "loc", label: location, clear: () => update({ location: ALL }) },
   ].filter(Boolean) as { key: string; label: string; clear: () => void }[];
 
   const anyFilter = panelFilters.length > 0 || paths.length > 0 || q.trim() !== "";
+  const updating = status === "loading";
+  const nextBatch = Math.max(1, Math.min(JOBS_PAGE_SIZE, total - jobs.length));
 
   function clearAll() {
-    setQ(""); setPaths([]); setWorkMode(ALL); setType(ALL); setLevel(ALL); setLocation(ALL);
+    update({ q: "", paths: [], workMode: ALL, type: ALL, level: ALL, location: ALL });
   }
 
   function togglePath(slug: string) {
-    setPaths((p) => (p.includes(slug) ? p.filter((x) => x !== slug) : [...p, slug]));
+    update({ paths: paths.includes(slug) ? paths.filter((x) => x !== slug) : [...paths, slug] });
   }
 
   function showToast(msg: string) {
@@ -109,11 +235,11 @@ export default function JobsClient({ initialJobs, careerPaths, userId, initialSa
             type="search"
             placeholder="Search title, organisation or location"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => update({ q: e.target.value.slice(0, 100) }, { debounce: true })}
             autoComplete="off"
           />
           {q && (
-            <button type="button" className="icon-btn" onClick={() => setQ("")} aria-label="Clear search">
+            <button type="button" className="icon-btn" onClick={() => update({ q: "" })} aria-label="Clear search">
               <X size={18} />
             </button>
           )}
@@ -134,7 +260,7 @@ export default function JobsClient({ initialJobs, careerPaths, userId, initialSa
         <div id="filter-panel" className="filter-panel">
           <div className="field">
             <label className="label" htmlFor="f-mode">Work mode</label>
-            <select id="f-mode" className="input" value={workMode} onChange={(e) => setWorkMode(e.target.value)}>
+            <select id="f-mode" className="input" value={workMode} onChange={(e) => update({ workMode: e.target.value })}>
               <option value={ALL}>Any</option>
               <option value="remote">Remote</option>
               <option value="onsite">On-site (physical)</option>
@@ -143,38 +269,38 @@ export default function JobsClient({ initialJobs, careerPaths, userId, initialSa
           </div>
           <div className="field">
             <label className="label" htmlFor="f-type">Job type</label>
-            <select id="f-type" className="input" value={type} onChange={(e) => setType(e.target.value)}>
+            <select id="f-type" className="input" value={type} onChange={(e) => update({ type: e.target.value })}>
               <option value={ALL}>Any</option>
               {Object.entries(ENGAGEMENT_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </div>
           <div className="field">
             <label className="label" htmlFor="f-level">Experience</label>
-            <select id="f-level" className="input" value={level} onChange={(e) => setLevel(e.target.value)}>
+            <select id="f-level" className="input" value={level} onChange={(e) => update({ level: e.target.value })}>
               <option value={ALL}>Any</option>
               {Object.entries(LEVEL_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </div>
           <div className="field">
             <label className="label" htmlFor="f-loc">Location</label>
-            <select id="f-loc" className="input" value={location} onChange={(e) => setLocation(e.target.value)}>
+            <select id="f-loc" className="input" value={location} onChange={(e) => update({ location: e.target.value })}>
               <option value={ALL}>Anywhere</option>
-              {locations.map((l) => <option key={l} value={l}>{l}</option>)}
+              {locations.map((l) => <option key={l} value={l}>{l.trim()}</option>)}
             </select>
           </div>
           <div className="panel-actions">
-            <button type="button" className="btn-link" onClick={() => { setWorkMode(ALL); setType(ALL); setLevel(ALL); setLocation(ALL); }}>
+            <button type="button" className="btn-link" onClick={() => update({ workMode: ALL, type: ALL, level: ALL, location: ALL })}>
               Reset filters
             </button>
             <button type="button" className="btn btn-solid btn-sm" onClick={() => setFiltersOpen(false)}>
-              Show {filtered.length} {filtered.length === 1 ? "job" : "jobs"}
+              {updating ? "Show jobs" : `Show ${total} ${total === 1 ? "job" : "jobs"}`}
             </button>
           </div>
         </div>
       )}
 
       <div className="path-filter" role="group" aria-label="Filter by career path">
-        <button type="button" className="chip-btn" aria-pressed={paths.length === 0} onClick={() => setPaths([])}>
+        <button type="button" className="chip-btn" aria-pressed={paths.length === 0} onClick={() => update({ paths: [] })}>
           All paths
         </button>
         {careerPaths.map((cp) => (
@@ -201,27 +327,69 @@ export default function JobsClient({ initialJobs, careerPaths, userId, initialSa
         </div>
       )}
 
-      <p className="result-count" aria-live="polite">
-        <strong>{filtered.length}</strong> {filtered.length === 1 ? "role" : "roles"}
-        {anyFilter ? " match your filters" : " open"}
+      <p className="result-count">
+        <span aria-live="polite">
+          <strong>{total}</strong> {total === 1 ? "role" : "roles"}
+          {anyFilter ? " match your filters" : " open"}
+        </span>
         {anyFilter && (
           <> · <button type="button" className="btn-link" style={{ minHeight: 0 }} onClick={clearAll}>Clear all</button></>
         )}
+        {updating && <span className="muted" aria-hidden="true"> · Updating…</span>}
       </p>
 
-      {filtered.length === 0 ? (
-        <div className="empty">
-          {initialJobs.length === 0
-            ? "No jobs posted yet. New opportunities are added by YPC coordinators — check back soon."
-            : "No jobs match those filters. Try removing one."}
+      {loadError ? (
+        <div className={styles.retry}>
+          <div className="alert alert-error" role="alert">
+            We couldn&apos;t load jobs just now. Check your connection, then try again.
+          </div>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => void loadFirstPage(filters)} disabled={updating}>
+            Try again
+          </button>
+        </div>
+      ) : jobs.length === 0 ? (
+        <div className={`empty${updating ? ` ${styles.updating}` : ""}`}>
+          {anyFilter
+            ? "No jobs match those filters. Try removing one."
+            : "No jobs posted yet. New opportunities are added by YPC coordinators — check back soon."}
         </div>
       ) : (
-        <div className="jobs-list">
-          {filtered.map((j) => (
-            <JobCard key={j.id} job={j} isSaved={savedIds.has(j.id)} onToggleSave={toggleSave} />
-          ))}
-        </div>
+        <>
+          <div className={`jobs-list${updating ? ` ${styles.updating}` : ""}`} aria-busy={updating}>
+            {jobs.map((j) => (
+              <JobCard key={j.id} job={j} isSaved={savedIds.has(j.id)} onToggleSave={toggleSave} />
+            ))}
+          </div>
+
+          <div className={styles.more}>
+            <p className="small muted" id="jobs-shown">
+              Showing {jobs.length} of {total} {total === 1 ? "role" : "roles"}
+            </p>
+            {hasMore && (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => void showMore()}
+                aria-disabled={status !== "idle"}
+                aria-describedby="jobs-shown"
+              >
+                {status === "more" ? (
+                  <><Loader2 size={18} className="spin" aria-hidden="true" /> Loading more jobs…</>
+                ) : (
+                  `Show ${nextBatch} more ${nextBatch === 1 ? "job" : "jobs"}`
+                )}
+              </button>
+            )}
+            {moreError && (
+              <p className="field-error" role="alert">
+                We couldn&apos;t load more jobs. Check your connection, then tap the button again.
+              </p>
+            )}
+          </div>
+        </>
       )}
+
+      <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
 
       {toast && <div className="toast" role="status">{toast}</div>}
     </>

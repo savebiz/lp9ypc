@@ -1,0 +1,30 @@
+/* Jobs list: "Show more" area and the calm "updating" state. Tokens only. */
+.updating {
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+
+.more {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 4px 0 32px;
+}
+
+.more :global(.btn) {
+  width: 100%;
+  max-width: 420px;
+}
+
+.retry {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .updating {
+    transition: none;
+  }
+}

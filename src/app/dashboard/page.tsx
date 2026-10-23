@@ -14,6 +14,7 @@ import EventCard from "@/components/news/EventCard";
 import AnnouncementItem from "@/components/news/AnnouncementItem";
 import FeedbackPanel from "@/components/feedback/FeedbackPanel";
 import { NEWS_COLUMNS, type NewsItem } from "@/components/news/news";
+import { JOB_CARD_COMPACT_COLUMNS } from "@/components/jobs/card-data";
 import type { CareerPath, CareerPathSuggestion, Community, Job, MemberCareerPath, MyFeedback, Profile } from "@/types";
 
 export const metadata = { title: "My dashboard · LP9 YPC" };
@@ -27,8 +28,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const [profileRes, pathsRes, savedRes, jobsRes, annRes, allPathsRes, suggestionsRes, communitiesRes, eventsRes, feedbackRes] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
     supabase.from("member_career_paths").select("*, career_paths(*)").eq("member_id", user.id),
-    supabase.from("saved_jobs").select("job_id, jobs(*, career_paths(*))").eq("member_id", user.id).order("created_at", { ascending: false }),
-    supabase.from("jobs").select("*, career_paths(*)").eq("is_active", true).order("created_at", { ascending: false }).limit(40),
+    // Dashboard job cards don't show descriptions, so only the card's compact columns are fetched.
+    supabase.from("saved_jobs").select(`job_id, jobs(${JOB_CARD_COMPACT_COLUMNS})`).eq("member_id", user.id).order("created_at", { ascending: false }),
+    // Pool of the latest live jobs to pick "Jobs for your paths" from (only 4 reach the page).
+    supabase.from("jobs").select(`career_path_id, ${JOB_CARD_COMPACT_COLUMNS}`).eq("is_active", true).eq("review_status", "approved")
+      .order("created_at", { ascending: false }).limit(40),
     supabase.from("announcements").select(NEWS_COLUMNS).eq("is_active", true).eq("kind", "announcement")
       .order("created_at", { ascending: false }).limit(3),
     supabase.from("career_paths").select("*").order("name"),
@@ -50,7 +54,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const savedJobs = ((savedRes.data ?? []) as unknown as { job_id: string; jobs: Job | null }[])
     .map((s) => s.jobs)
     .filter((j): j is Job => !!j);
-  const latest = (jobsRes.data ?? []) as Job[];
+  // Card columns + career_path_id only; DashboardClient just renders JobCards from these.
+  const latest = (jobsRes.data ?? []) as unknown as Job[];
   const announcements = (annRes.data ?? []) as unknown as NewsItem[];
   const events = (eventsRes.data ?? []) as unknown as NewsItem[];
   const allPaths = (allPathsRes.data ?? []) as CareerPath[];

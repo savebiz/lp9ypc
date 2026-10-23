@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Bookmark, BookmarkCheck, CalendarClock, Clock, MapPin } from "lucide-react";
-import type { Job } from "@/types";
+import type { JobCardJob } from "@/components/jobs/card-data";
 import ApplyButton from "@/components/jobs/ApplyButton";
 import FeedbackLink from "@/components/feedback/FeedbackLink";
 import { FEEDBACK_COPY } from "@/components/feedback/feedback";
@@ -17,7 +17,8 @@ import {
 } from "@/lib/utils";
 
 interface JobCardProps {
-  job: Job;
+  /** Only the card's own columns are needed (see card-data.ts); a full Job works too. */
+  job: JobCardJob;
   isSaved?: boolean;
   onToggleSave?: (jobId: string) => void;
   showDescription?: boolean;
