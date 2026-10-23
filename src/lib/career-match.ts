@@ -9,7 +9,7 @@
 // file directly with Node's built-in TypeScript type stripping.
 import { normalizeProfession } from "./profession.ts";
 
-/** The ten career-path slugs seeded by the initial migration. */
+/** The career-path slugs: ten seeded by the initial migration, plus Education & Research (2026-10-23). */
 export const CAREER_PATH_SLUGS = [
   "tech-product",
   "finance-accounting",
@@ -21,6 +21,7 @@ export const CAREER_PATH_SLUGS = [
   "human-resources",
   "health-wellness",
   "creative-industries",
+  "education-research",
 ] as const;
 
 export type CareerPathSlug = (typeof CAREER_PATH_SLUGS)[number];
@@ -177,6 +178,14 @@ const RULES: Record<CareerPathSlug, Rule[]> = {
     [/\bvideo(grapher|graphy)?\b|\bcinematograph/, 2],
     [/\bactor\b|\bactress\b|\bperformer\b|\bproducer\b|\bcreative\b/, 2],
     [/\binterior\b/, 1],
+  ],
+  "education-research": [
+    [/\bteach(er|ers|ing)\b/, 3],
+    [/\blecturer|\bprofessor\b|\bacademic/, 3],
+    [/\bresearch(er|ers)?\b/, 2],
+    [/\btutor|\binstructor\b|\beducator\b|\bfacilitator\b/, 2],
+    [/\beducation(al)?\b|\bschool\b|\bschools\b|\buniversity\b|\bpolytechnic\b/, 2],
+    [/\bphd\b|\bscholar|\bpostgraduate\b|\bcurriculum\b|\bedtech\b/, 2],
   ],
 };
 

@@ -1,10 +1,10 @@
 -- ============================================================================
 -- LP9 YPC — post-setup verification (read-only; changes nothing)
 -- ============================================================================
--- Run in the Supabase SQL Editor after ALL SIX migrations (initial schema,
+-- Run in the Supabase SQL Editor after ALL SEVEN migrations (initial schema,
 -- community_agents, community_social, job_referral_flag, replyto_audit_flyers,
--- feedback).
--- 42 checks. Every row should show ok = true. If any row says false, stop and send the
+-- feedback, job_review).
+-- 43 checks. Every row should show ok = true. If any row says false, stop and send the
 -- result over before going further.
 -- ============================================================================
 
@@ -22,8 +22,8 @@ select '02. row-level security is ON for all 6 tables',
           from pg_class c join expected e on e.name = c.relname
          where c.relnamespace = 'public'::regnamespace)
 union all
-select '03. the 10 career paths from the brief are seeded',
-       (select count(*) = 10 from public.career_paths)
+select '03. the career paths are seeded (10 from the brief, plus any added since)',
+       (select count(*) >= 10 from public.career_paths)
 union all
 select '04. signup trigger is installed on auth.users',
        exists (select 1 from pg_trigger
@@ -77,8 +77,8 @@ select '16. all 11 Phase 2 tables exist with row-level security ON',
            and c.relname in ('profession_research','career_path_suggestions','career_path_candidates','job_sources',
                              'communities','community_members','threads','replies','reports','moderation_log','agent_runs'))
 union all
-select '17. 17 communities seeded (10 career + 7 interest)',
-       (select count(*) = 17 from public.communities)
+select '17. the communities are seeded (17 at launch, plus any added since)',
+       (select count(*) >= 17 from public.communities)
 union all
 select '18. members CANNOT write discussion posts directly (server-side only)',
        not has_table_privilege('authenticated', 'public.threads', 'INSERT')
@@ -190,4 +190,8 @@ select '42. link checks: admins-only table, and the run log accepts link_check',
        and not has_table_privilege('anon', 'public.link_health', 'SELECT')
        and exists (select 1 from pg_constraint where conname = 'agent_runs_agent_check'
                     and pg_get_constraintdef(oid) like '%link_check%')
+union all
+select '43. jobs carry a relevance score and a rejection reason for the review queue',
+       exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'jobs' and column_name = 'relevance')
+       and exists (select 1 from pg_constraint where conname = 'jobs_reject_reason_values')
 order by 1;

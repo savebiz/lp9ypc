@@ -239,6 +239,7 @@ const PATH_RULES: [RegExp, string][] = [
   [/\b(legal|lawyer|counsel|solicitor|attorney|paralegal|compliance|regulatory)\b/i, "law-compliance"],
   [/\b(human resources?|recruit\w*|talent acquisition|people (?:partner|operations)|payroll)\b/i, "human-resources"],
   [/\bHR\b/, "human-resources"],
+  [/\b(teach\w*|lecturer\w*|tutor\w*|educat\w*|academic\w*|professor\w*|research\s+(assistant|fellow|associate)|school|curriculum)\b/i, "education-research"],
   [/\b(graphic|designer|creative|ui\/ux|ux|video\w*|photograph\w*|animat\w*|fashion|illustrat\w*)\b/i, "creative-industries"],
   [/\b(journalis\w*|editor|content (?:writer|creator)|copywrit\w*|communications?|public relations|social media|broadcast\w*)\b/i, "media-communications"],
   [/\bPR\b/, "media-communications"],

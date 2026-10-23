@@ -1,6 +1,7 @@
 import {
   Briefcase,
   Calculator,
+  GraduationCap,
   HardHat,
   HeartPulse,
   Landmark,
@@ -26,6 +27,7 @@ const PATH_ICONS: Record<string, LucideIcon> = {
   "human-resources": Users,
   "health-wellness": HeartPulse,
   "creative-industries": Palette,
+  "education-research": GraduationCap,
 };
 
 export function PathIcon({ slug, size = 18, className }: { slug: string; size?: number; className?: string }) {
