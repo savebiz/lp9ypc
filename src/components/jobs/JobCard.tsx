@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Bookmark, BookmarkCheck, CalendarClock, Clock, MapPin } from "lucide-react";
 import type { JobCardJob } from "@/components/jobs/card-data";
-import ApplyButton from "@/components/jobs/ApplyButton";
+import ApplyButton, { type ApplySource } from "@/components/jobs/ApplyButton";
 import FeedbackLink from "@/components/feedback/FeedbackLink";
 import { FEEDBACK_COPY } from "@/components/feedback/feedback";
 import { PathIcon } from "@/components/ui/icons";
@@ -22,9 +22,11 @@ interface JobCardProps {
   isSaved?: boolean;
   onToggleSave?: (jobId: string) => void;
   showDescription?: boolean;
+  /** Where the card is shown, for the Apply tap count (default "card"). */
+  applySource?: ApplySource;
 }
 
-export default function JobCard({ job, isSaved, onToggleSave, showDescription = true }: JobCardProps) {
+export default function JobCard({ job, isSaved, onToggleSave, showDescription = true, applySource = "card" }: JobCardProps) {
   const soon = isDeadlineSoon(job.deadline);
 
   return (
@@ -78,7 +80,14 @@ export default function JobCard({ job, isSaved, onToggleSave, showDescription = 
         )}
       </div>
 
-      <ApplyButton link={job.application_link} deadline={job.deadline} title={job.title} referral={!!job.is_referral} />
+      <ApplyButton
+        jobId={job.id}
+        link={job.application_link}
+        deadline={job.deadline}
+        title={job.title}
+        referral={!!job.is_referral}
+        source={applySource}
+      />
       {!isExpired(job.deadline) && (
         <FeedbackLink
           href={`/feedback?job=${job.id}&kind=link`}

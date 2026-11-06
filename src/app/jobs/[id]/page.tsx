@@ -76,7 +76,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 ? "The deadline for this role has passed."
                 : "Ready? This takes you straight to the official application page."}
             </p>
-            <ApplyButton link={job.application_link} deadline={job.deadline} title={job.title} size="lg" referral={!!job.is_referral} />
+            <ApplyButton jobId={job.id} source="detail" link={job.application_link} deadline={job.deadline} title={job.title} size="lg" referral={!!job.is_referral} />
             {!expired && (
               <FeedbackLink
                 href={`/feedback?job=${job.id}&kind=link`}
@@ -106,7 +106,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
         {!expired && (
           <div className="apply-sticky">
-            <ApplyButton link={job.application_link} deadline={job.deadline} title={job.title} hint={false} />
+            <ApplyButton jobId={job.id} source="detail" link={job.application_link} deadline={job.deadline} title={job.title} hint={false} />
           </div>
         )}
       </main>

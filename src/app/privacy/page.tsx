@@ -10,7 +10,7 @@ export const metadata = { title: "Privacy policy · LP9 YPC" };
 
 // Keep every statement here true to the code. If a feature, provider or data
 // flow changes, update this page and LAST_UPDATED in the same change.
-const LAST_UPDATED = { iso: "2026-10-12", label: "12 October 2026" };
+const LAST_UPDATED = { iso: "2026-11-06", label: "6 November 2026" };
 
 const SECTIONS = [
   { id: "who-we-are", title: "Who we are" },
@@ -129,10 +129,19 @@ export default async function PrivacyPage() {
               Feedback you send us: the category you chose (for example &ldquo;This link doesn&apos;t work&rdquo;),
               your note, the page or item it was about, and your account, so we can show you its progress
             </li>
+            <li>
+              Taps on Apply: which job, when, and your account if you&apos;re signed in. We count these to measure
+              whether the platform is helping people apply. Only YPC admins see the totals, never individual taps.
+            </li>
           </ul>
 
           <h3>Cookies and technical logs</h3>
           <p>We use only the essential cookies that keep you signed in. We don&apos;t use advertising or analytics trackers.</p>
+          <p>
+            Your browser also keeps two small notes on your own device, not on our servers: that you&apos;ve seen the
+            welcome message, and when you last opened your dashboard, so we can show what&apos;s new since then.
+            Clearing your browser&apos;s site data removes them.
+          </p>
           <p>
             Like most websites, our hosting and database providers keep short-term technical logs, such as IP
             address, browser type and the pages requested, to keep the service secure and working.
@@ -156,7 +165,8 @@ export default async function PrivacyPage() {
             </Pair>
             <Pair title="To understand and plan for the club" basis="Our legitimate interests">
               For example, counting how many members chose each career path, so coordinators can plan events and
-              share the right opportunities.
+              share the right opportunities, and counting taps on Apply each week to see whether the platform helps
+              people apply.
             </Pair>
             <Pair title="To send you club updates" basis="Your consent">
               Job alerts, workshops and club news by email or WhatsApp, only if you ticked &ldquo;Send me YPC
@@ -293,7 +303,8 @@ export default async function PrivacyPage() {
             <li>We keep your account data for as long as your account is active.</li>
             <li>
               If you ask us to delete your account, we delete your profile. Your saved jobs, career paths,
-              suggestions, community memberships, posts, replies and reports are deleted with it.
+              suggestions, community memberships, posts, replies, reports and records of your taps on Apply are
+              deleted with it.
             </li>
             <li>
               When you delete one of your own posts, it disappears from the community straight away. A copy stays in
@@ -314,6 +325,7 @@ export default async function PrivacyPage() {
               Copies in our providers&apos; backups and logs are cleared on their normal schedules. How Google
               handles AI requests is described in <a href="#ai-assistants">AI assistants</a>.
             </li>
+            <li>Records of taps on Apply are kept while they help us measure whether the platform works; admins clear out records older than 12 months at least once a year. They are deleted with your account.</li>
             <li>We don&apos;t currently delete inactive accounts automatically. If that changes, we&apos;ll update this page.</li>
           </ul>
         </Section>

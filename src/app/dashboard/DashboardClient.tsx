@@ -51,7 +51,7 @@ export default function DashboardClient({ userId, forYou, forYouTitle, saved: in
         ) : (
           <div className="jobs-list" style={{ gridTemplateColumns: "1fr", paddingBottom: 0 }}>
             {forYou.map((j) => (
-              <JobCard key={j.id} job={j} isSaved={savedIds.has(j.id)} onToggleSave={toggleSave} showDescription={false} />
+              <JobCard key={j.id} job={j} isSaved={savedIds.has(j.id)} onToggleSave={toggleSave} showDescription={false} applySource="dashboard" />
             ))}
           </div>
         )}
@@ -67,7 +67,7 @@ export default function DashboardClient({ userId, forYou, forYouTitle, saved: in
         ) : (
           <div className="jobs-list" style={{ gridTemplateColumns: "1fr", paddingBottom: 0 }}>
             {saved.map((j) => (
-              <JobCard key={j.id} job={j} isSaved onToggleSave={toggleSave} showDescription={false} />
+              <JobCard key={j.id} job={j} isSaved onToggleSave={toggleSave} showDescription={false} applySource="dashboard" />
             ))}
           </div>
         )}
