@@ -6,6 +6,7 @@ import type { AdminAuditEntry, CareerPath, JobSource, Profile } from "@/types";
 import type { Tab } from "../AdminClient";
 import { Stat, formatDateTime, type JobRef } from "./shared";
 import { REJECT_REASON_LABELS, ageLabel } from "./jobQueries";
+import WeeklyApplyTiles from "./WeeklyApplyTiles";
 import styles from "../admin.module.css";
 
 export interface OverviewQueues {
@@ -87,6 +88,8 @@ export default function OverviewTab({ openJobs, members, careerPaths, memberPath
         <Stat n={openJobs} label="Open jobs" />
         <Stat n={optedIn} label="Opted in to updates" />
       </div>
+
+      <WeeklyApplyTiles />
 
       <section className="card" aria-labelledby="queues-h">
         <h2 id="queues-h" className="title-sm" style={{ marginBottom: 4 }}>Needs your attention</h2>

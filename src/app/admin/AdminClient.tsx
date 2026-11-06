@@ -15,13 +15,14 @@ import ModerationTab from "./tabs/ModerationTab";
 import CareerIdeasTab from "./tabs/CareerIdeasTab";
 import AgentsTab from "./tabs/AgentsTab";
 import AnnouncementsTab from "./tabs/AnnouncementsTab";
+import DigestTab from "./tabs/DigestTab";
 import FeedbackTab, { type FixTarget } from "./tabs/FeedbackTab";
 import type { BrokenLinkJob } from "./tabs/OverviewTab";
 import styles from "./admin.module.css";
 
 export type Tab =
   | "overview" | "jobs" | "review" | "sources" | "members" | "communities"
-  | "moderation" | "feedback" | "ideas" | "agents" | "announcements";
+  | "moderation" | "feedback" | "ideas" | "agents" | "announcements" | "digest";
 
 type Feedback = { kind: "ok" | "error"; text: string } | null;
 
@@ -92,6 +93,7 @@ export default function AdminClient({ data }: { data: AdminData }) {
     { key: "moderation", label: `Moderation (${moderationCount})` },
     ...(newFeedback !== null ? [{ key: "feedback" as Tab, label: `Feedback (${newFeedback})` }] : []),
     { key: "announcements", label: `News & events (${data.announcements.length})` },
+    { key: "digest", label: "Weekly digest" },
     { key: "ideas", label: `Career path ideas (${data.candidates.length})` },
     { key: "agents", label: "Assistants set-up" },
   ];
@@ -184,6 +186,7 @@ export default function AdminClient({ data }: { data: AdminData }) {
           <FeedbackTab feedback={data.feedback} jobs={feedbackJobs} editableJobIds={listedJobIds} announcements={data.announcements}
             careerPaths={careerPaths} communities={data.communities} members={members} onFixIt={fixIt} {...actions} />
         )}
+        {tab === "digest" && <DigestTab careerPaths={careerPaths} />}
         {tab === "ideas" && <CareerIdeasTab candidates={data.candidates} careerPaths={careerPaths} adminId={data.adminId} {...actions} />}
         {tab === "agents" && <AgentsTab runs={data.agentRuns} />}
         {tab === "announcements" && (
