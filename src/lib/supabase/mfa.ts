@@ -1,8 +1,9 @@
 /**
  * Admin two-step sign-in (Supabase Auth MFA, TOTP authenticator apps).
  *
- * Off by default. When the server env ADMIN_MFA_REQUIRED is "true", admin
- * pages and requireAdmin() need a session at "aal2" (password + code).
+ * An admin with an authenticator app always signs in with the code (aal2);
+ * when the server env ADMIN_MFA_REQUIRED is "true", admins without one must
+ * set one up before using admin tools.
  * Enrolment, codes and removal are handled by Supabase Auth itself (it also
  * refuses to add or remove a verified factor without aal2).
  *
@@ -24,10 +25,17 @@ export function verifiedTotpFactors(user: { factors?: FactorLike[] | null }): Fa
   return (user.factors ?? []).filter((f) => f.factor_type === "totp" && f.status === "verified");
 }
 
-/** Pure decision: may this admin use admin tools, and if not, what next? */
+/**
+ * Pure decision: may this admin use admin tools, and if not, what next?
+ * An admin who has set up an authenticator app ALWAYS needs the code: the
+ * database's is_admin() (migration 9) refuses admin powers to that account
+ * without aal2, whatever ADMIN_MFA_REQUIRED says. The setting only forces
+ * admins without an app to set one up.
+ */
 export function decideAdminMfa(input: { required: boolean; currentLevel: string | null; hasVerifiedFactor: boolean }): AdminMfaState {
-  if (!input.required || input.currentLevel === "aal2") return { ok: true };
-  return { ok: false, next: input.hasVerifiedFactor ? "verify" : "enrol" };
+  if (input.currentLevel === "aal2") return { ok: true };
+  if (input.hasVerifiedFactor) return { ok: false, next: "verify" };
+  return input.required ? { ok: false, next: "enrol" } : { ok: true };
 }
 
 type AuthClient = { auth: Pick<SupabaseClient["auth"], "getClaims"> };
@@ -50,9 +58,10 @@ export async function sessionAal(supabase: AuthClient, userId: string): Promise<
 /** Full check for a signed-in admin (user from auth.getUser()). */
 export async function adminMfaState(supabase: AuthClient, user: User): Promise<AdminMfaState> {
   const required = adminMfaRequired();
-  if (!required) return { ok: true };
+  const hasVerifiedFactor = verifiedTotpFactors(user).length > 0;
+  if (!required && !hasVerifiedFactor) return { ok: true };
   const currentLevel = await sessionAal(supabase, user.id);
-  return decideAdminMfa({ required, currentLevel, hasVerifiedFactor: verifiedTotpFactors(user).length > 0 });
+  return decideAdminMfa({ required, currentLevel, hasVerifiedFactor });
 }
 
 /** Where the "enter your code" step may send an admin afterwards: admin pages only. */

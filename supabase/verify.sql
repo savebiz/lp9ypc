@@ -1,10 +1,10 @@
 -- ============================================================================
 -- LP9 YPC — post-setup verification (read-only; changes nothing)
 -- ============================================================================
--- Run in the Supabase SQL Editor after ALL SEVEN migrations (initial schema,
+-- Run in the Supabase SQL Editor after ALL NINE migrations (initial schema,
 -- community_agents, community_social, job_referral_flag, replyto_audit_flyers,
--- feedback, job_review).
--- 43 checks. Every row should show ok = true. If any row says false, stop and send the
+-- feedback, job_review, seed data, admin_aal_and_apply_taps).
+-- 45 checks. Every row should show ok = true. If any row says false, stop and send the
 -- result over before going further.
 -- ============================================================================
 
@@ -194,4 +194,14 @@ union all
 select '43. jobs carry a relevance score and a rejection reason for the review queue',
        exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'jobs' and column_name = 'relevance')
        and exists (select 1 from pg_constraint where conname = 'jobs_reject_reason_values')
+union all
+select '44. once an admin sets up an authenticator app, admin powers need the code (aal2)',
+       position('aal2' in pg_get_functiondef('public.is_admin()'::regprocedure)) > 0
+union all
+select '45. Apply taps: nobody reads rows from the browser; admins get weekly totals only',
+       coalesce((select relrowsecurity from pg_class where oid = 'public.apply_clicks'::regclass), false)
+       and not has_table_privilege('authenticated', 'public.apply_clicks', 'SELECT')
+       and not has_table_privilege('anon', 'public.apply_clicks', 'INSERT')
+       and has_function_privilege('authenticated', 'public.apply_weekly(integer)', 'EXECUTE')
+       and not has_function_privilege('anon', 'public.apply_weekly(integer)', 'EXECUTE')
 order by 1;
